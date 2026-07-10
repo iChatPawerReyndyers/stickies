@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, GestureResponderEvent } from 'react-native';
-import { Note } from '../types';
+import { Note, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING } from '../types';
 import styles, { CARD_SIZE } from '../styles';
 import { FRAME_COMPONENTS } from '../frames';
 
@@ -30,9 +30,12 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
     const textStyle = getTextStyle();
 
     if (note.contentType === 'text') {
-      // Show the full content text exactly as typed, just small
+      // Show the full content text exactly as typed, just small.
+      // Same 0.34 scale factor used elsewhere so the preview's line spacing
+      // stays proportional to what's set in the styling bar.
+      const lineSpacing = note.lineSpacing ?? DEFAULT_LINE_SPACING;
       return (
-        <Text style={[styles.cardPreview, textStyle]} numberOfLines={10}>
+        <Text style={[styles.cardPreview, textStyle, { lineHeight: 8 + lineSpacing * 0.34 }]} numberOfLines={10}>
           {note.content as string}
         </Text>
       );
@@ -52,6 +55,11 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
       }
       return rawCheckItems;
     })();
+    // Same 0.34 scale factor used for vertical margins below, so the preview's
+    // row gap stays proportional to what's set in the styling bar.
+    const spacing = note.itemSpacing || DEFAULT_ITEM_SPACING;
+    const rowSpacingStyle = { marginTop: spacing.top * 0.34, marginBottom: spacing.bottom * 0.34 };
+
     return (
       <View>
         {titleItem?.text ? (
@@ -63,7 +71,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
           </Text>
         ) : null}
         {checkItems.map((item: any) => (
-          <View key={item.id} style={{ flexDirection: 'row', alignItems: note.checklistTextMode === 'wrap' ? 'flex-start' : 'center', marginBottom: 2 }}>
+          <View key={item.id} style={[{ flexDirection: 'row', alignItems: note.checklistTextMode === 'wrap' ? 'flex-start' : 'center' }, rowSpacingStyle]}>
             {/* Mini checkbox matching the modal's rounded-square shape */}
             <View style={{
               width: 7, height: 7,

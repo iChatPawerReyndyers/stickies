@@ -15,7 +15,7 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
-import { AppSettings, AppTheme, SortOrder, Note, Tab, TextStyle, ContentType, ChecklistItem, DEFAULT_MARGINS, ChecklistSort, ChecklistTextMode, NoteMargins } from '../types';
+import { AppSettings, AppTheme, SortOrder, Note, Tab, TextStyle, ContentType, ChecklistItem, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, NoteMargins } from '../types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.24);
@@ -61,6 +61,8 @@ const SettingsModal = ({
   const [draftContentType, setDraftContentType] = useState<ContentType>('text');
   const [draftUseSvgBackground, setDraftUseSvgBackground] = useState(false);
   const [draftMargins, setDraftMargins] = useState<NoteMargins>(DEFAULT_MARGINS);
+  const [draftItemSpacing, setDraftItemSpacing] = useState<ItemSpacing>(DEFAULT_ITEM_SPACING);
+  const [draftLineSpacing, setDraftLineSpacing] = useState<number>(DEFAULT_LINE_SPACING);
   const [draftChecklistSort, setDraftChecklistSort] = useState<ChecklistSort>('as-is');
   const [draftChecklistTextMode, setDraftChecklistTextMode] = useState<ChecklistTextMode>('single');
 
@@ -140,6 +142,8 @@ const SettingsModal = ({
     setDraftContentType('text');
     setDraftUseSvgBackground(false);
     setDraftMargins(DEFAULT_MARGINS);
+    setDraftItemSpacing(DEFAULT_ITEM_SPACING);
+    setDraftLineSpacing(DEFAULT_LINE_SPACING);
     setDraftChecklistSort('as-is');
     setDraftChecklistTextMode('single');
   }, [visible, settings.defaultColor, settings.defaultTextColor, settings.defaultFont, settings.defaultFontSize]);
@@ -161,6 +165,8 @@ const SettingsModal = ({
       contentType: draftContentType,
       useSvgBackground: draftUseSvgBackground,
       margins: draftMargins,
+      itemSpacing: draftItemSpacing,
+      lineSpacing: draftLineSpacing,
       checklistSort: draftChecklistSort,
       checklistTextMode: draftChecklistTextMode,
     });
@@ -193,6 +199,8 @@ const SettingsModal = ({
     setDraftContentType(style.contentType);
     setDraftUseSvgBackground(style.useSvgBackground);
     setDraftMargins(style.margins || DEFAULT_MARGINS);
+    setDraftItemSpacing(style.itemSpacing || DEFAULT_ITEM_SPACING);
+    setDraftLineSpacing(style.lineSpacing ?? DEFAULT_LINE_SPACING);
     setDraftChecklistSort(style.checklistSort || 'as-is');
     setDraftChecklistTextMode(style.checklistTextMode || 'single');
     Alert.alert('Style applied', `Using “${style.name}” for new notes.`);
@@ -314,7 +322,7 @@ const SettingsModal = ({
               <View style={s.stepper}>
                 <TouchableOpacity
                   style={s.stepBtn}
-                  onPress={() => onUpdateSettings({ defaultFontSize: Math.max(10, settings.defaultFontSize - 2) })}
+                  onPress={() => onUpdateSettings({ defaultFontSize: Math.max(6, settings.defaultFontSize - 2) })}
                 >
                   <Text style={s.stepBtnText}>−</Text>
                 </TouchableOpacity>
@@ -527,6 +535,10 @@ const SettingsModal = ({
           svgFrameId={draftUseSvgBackground ? FRAME_IDS[0] : undefined}
           selectedMargins={draftMargins}
           onMarginsChange={setDraftMargins}
+          selectedItemSpacing={draftItemSpacing}
+          onItemSpacingChange={setDraftItemSpacing}
+          selectedLineSpacing={draftLineSpacing}
+          onLineSpacingChange={setDraftLineSpacing}
           selectedChecklistSort={draftChecklistSort}
           onChecklistSortChange={setDraftChecklistSort}
           selectedChecklistTextMode={draftChecklistTextMode}

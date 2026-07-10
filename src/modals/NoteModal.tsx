@@ -14,7 +14,7 @@ import {
   Keyboard,
 } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
-import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ChecklistSort, ChecklistTextMode } from '../types';
+import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, ChecklistSort, ChecklistTextMode } from '../types';
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { FRAME_COMPONENTS } from '../frames';
 
@@ -130,6 +130,10 @@ type NoteModalProps = {
   svgFrameId?: string;
   selectedMargins: NoteMargins;
   onMarginsChange: (margins: NoteMargins) => void;
+  selectedItemSpacing: ItemSpacing;
+  onItemSpacingChange: (spacing: ItemSpacing) => void;
+  selectedLineSpacing: number;
+  onLineSpacingChange: (spacing: number) => void;
   selectedChecklistSort: ChecklistSort;
   onChecklistSortChange: (sort: ChecklistSort) => void;
   selectedChecklistTextMode: ChecklistTextMode;
@@ -154,6 +158,8 @@ interface StylingSnapshot {
   selectedTextStyle: TextStyle;
   useSvgBackground: boolean;
   selectedMargins: NoteMargins;
+  selectedItemSpacing: ItemSpacing;
+  selectedLineSpacing: number;
   selectedChecklistSort: ChecklistSort;
   selectedChecklistTextMode: ChecklistTextMode;
 }
@@ -172,6 +178,8 @@ const NoteModal = ({
   useSvgBackground, onUseSvgBackgroundChange,
   svgFrameId,
   selectedMargins, onMarginsChange,
+  selectedItemSpacing, onItemSpacingChange,
+  selectedLineSpacing, onLineSpacingChange,
   selectedChecklistSort, onChecklistSortChange,
   selectedChecklistTextMode, onChecklistTextModeChange,
   onSave, onCancel,
@@ -295,7 +303,12 @@ const NoteModal = ({
   // ── Text style ───────────────────────────────────────────────────────────────
 
   const getTextStyle = (): any => {
-    const base: any = { fontFamily: selectedFont, color: selectedTextColor, fontSize: selectedFontSize };
+    const base: any = {
+      fontFamily: selectedFont,
+      color: selectedTextColor,
+      fontSize: selectedFontSize,
+      lineHeight: selectedFontSize + selectedLineSpacing,
+    };
     if (selectedTextStyle === 'bold') base.fontWeight = 'bold';
     else if (selectedTextStyle === 'italic') base.fontStyle = 'italic';
     else if (selectedTextStyle === 'underline') base.textDecorationLine = 'underline';
@@ -323,7 +336,7 @@ const NoteModal = ({
     setStylingSnapshot({
       contentType, content,
       selectedColor, selectedTextColor, selectedFont, selectedFontSize,
-      selectedTextStyle, useSvgBackground, selectedMargins, selectedChecklistSort,
+      selectedTextStyle, useSvgBackground, selectedMargins, selectedItemSpacing, selectedLineSpacing, selectedChecklistSort,
       selectedChecklistTextMode,
     });
     setShowStyling(true);
@@ -346,6 +359,8 @@ const NoteModal = ({
       onTextStyleChange(stylingSnapshot.selectedTextStyle);
       onUseSvgBackgroundChange(stylingSnapshot.useSvgBackground);
       onMarginsChange(stylingSnapshot.selectedMargins);
+      onItemSpacingChange(stylingSnapshot.selectedItemSpacing);
+      onLineSpacingChange(stylingSnapshot.selectedLineSpacing);
       onChecklistSortChange(stylingSnapshot.selectedChecklistSort);
       onChecklistTextModeChange(stylingSnapshot.selectedChecklistTextMode);
     }
@@ -357,7 +372,11 @@ const NoteModal = ({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS === 'ios'}
+        style={{ flex: 1 }}
+      >
 
         {/* Semi-transparent backdrop — tapping it dismisses the modal */}
         <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={onCancel} />
@@ -422,7 +441,7 @@ const NoteModal = ({
                       );
                     }
                     return (
-                      <View key={item.id} style={clStyles.row}>
+                      <View key={item.id} style={[clStyles.row, { marginTop: selectedItemSpacing.top, marginBottom: selectedItemSpacing.bottom }]}>
                         <View style={clStyles.checkboxTouch}>
                           <CheckboxIcon checked={item.completed} />
                         </View>
@@ -451,7 +470,7 @@ const NoteModal = ({
                     );
                   }
                   return (
-                    <View key={item.id} style={clStyles.row}>
+                    <View key={item.id} style={[clStyles.row, { marginTop: selectedItemSpacing.top, marginBottom: selectedItemSpacing.bottom }]}>
                       <TouchableOpacity
                         style={clStyles.checkboxTouch}
                         onPress={() => toggleItem(item.id)}
@@ -668,7 +687,7 @@ const NoteModal = ({
               <View style={[barStyles.section, { width: 106 }]}>
                 <Text style={barStyles.sLabel}>Size</Text>
                 <View style={barStyles.stepper}>
-                  <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(10, selectedFontSize - 2))}>
+                  <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(6, selectedFontSize - 2))}>
                     <Text style={barStyles.stepBtnText}>−</Text>
                   </TouchableOpacity>
                   <Text style={barStyles.stepVal}>{selectedFontSize}</Text>
@@ -734,7 +753,55 @@ const NoteModal = ({
                 ))}
               </View>
 
-              {/* ── Order (checklist only) ── */}
+              <View style={barStyles.vDivider} />
+
+              {/* ── Spacing (both types — checklist gets item gaps, text gets line spacing) ── */}
+              <View style={[barStyles.section, { width: contentType === 'checklist' ? 140 : 110 }]}>
+                <Text style={barStyles.sLabel}>{contentType === 'checklist' ? 'Item Spacing' : 'Line Spacing'}</Text>
+                {contentType === 'checklist' ? (
+                  ([
+                    { key: 'top', label: 'Above' },
+                    { key: 'bottom', label: 'Below' },
+                  ] as { key: keyof ItemSpacing; label: string }[]).map(({ key, label }) => (
+                    <View key={key} style={barStyles.marginRow}>
+                      <Text style={barStyles.marginLabel}>{label}</Text>
+                      <View style={barStyles.stepper}>
+                        <TouchableOpacity
+                          style={barStyles.stepBtn}
+                          onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.max(0, selectedItemSpacing[key] - 2) })}
+                        >
+                          <Text style={barStyles.stepBtnText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={barStyles.stepVal}>{selectedItemSpacing[key]}</Text>
+                        <TouchableOpacity
+                          style={barStyles.stepBtn}
+                          onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.min(48, selectedItemSpacing[key] + 2) })}
+                        >
+                          <Text style={barStyles.stepBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <View style={barStyles.stepper}>
+                    <TouchableOpacity
+                      style={barStyles.stepBtn}
+                      onPress={() => onLineSpacingChange(Math.max(0, selectedLineSpacing - 2))}
+                    >
+                      <Text style={barStyles.stepBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={barStyles.stepVal}>{selectedLineSpacing}</Text>
+                    <TouchableOpacity
+                      style={barStyles.stepBtn}
+                      onPress={() => onLineSpacingChange(Math.min(30, selectedLineSpacing + 2))}
+                    >
+                      <Text style={barStyles.stepBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              {/* ── Display / Order (checklist only) ── */}
               {contentType === 'checklist' && (
                 <>
                   <View style={barStyles.vDivider} />
@@ -868,7 +935,7 @@ const s = StyleSheet.create({
     transform: [{ scaleX: 1.3 }],
   },
   dividerLine: { height: 1, backgroundColor: '#E5E5EA' },
-  textInput: { flex: 1, fontSize: 16, lineHeight: 22, padding: 0 },
+  textInput: { flex: 1, padding: 0 },
   actionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -887,7 +954,7 @@ const s = StyleSheet.create({
 const clStyles = StyleSheet.create({
   titleRow: { width: '100%', marginVertical: 4, paddingBottom: 4 },
   titleInput: { fontWeight: '700', color: '#1C1C1E', paddingVertical: 6, paddingHorizontal: 0 },
-  row: { flexDirection: 'row', alignItems: 'center', marginVertical: 6 },
+  row: { flexDirection: 'row', alignItems: 'center' },
   checkboxTouch: { marginRight: ROW_GAP, alignItems: 'center', justifyContent: 'center' },
   inputWrap: { flex: 1, justifyContent: 'center', position: 'relative' },
   brushWrap: { position: 'absolute', left: 0, top: '50%', marginTop: -(BRUSH_HEIGHT / 2) },

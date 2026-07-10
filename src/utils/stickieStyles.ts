@@ -1,4 +1,4 @@
-import { ContentType, StickieStyle, TextStyle, NoteMargins, ChecklistSort, ChecklistTextMode } from '../types';
+import { ContentType, StickieStyle, TextStyle, NoteMargins, ItemSpacing, ChecklistSort, ChecklistTextMode } from '../types';
 
 export const createStickieStyle = ({
   name,
@@ -11,6 +11,8 @@ export const createStickieStyle = ({
   useSvgBackground,
   svgFrameId,
   margins,
+  itemSpacing,
+  lineSpacing,
   checklistSort,
   checklistTextMode,
 }: {
@@ -24,6 +26,8 @@ export const createStickieStyle = ({
   useSvgBackground: boolean;
   svgFrameId?: string;
   margins?: NoteMargins;
+  itemSpacing?: ItemSpacing;
+  lineSpacing?: number;
   checklistSort?: ChecklistSort;
   checklistTextMode?: ChecklistTextMode;
 }): StickieStyle => ({
@@ -38,6 +42,8 @@ export const createStickieStyle = ({
   useSvgBackground,
   svgFrameId,
   margins,
+  itemSpacing,
+  lineSpacing,
   checklistSort,
   checklistTextMode,
 });

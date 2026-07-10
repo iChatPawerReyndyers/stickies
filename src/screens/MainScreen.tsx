@@ -19,7 +19,7 @@ import TabModal from '../modals/TabModal';
 import SettingsModal from '../modals/SettingsModal';
 import ReadOnlyModal from '../modals/ReadOnlyModal';
 import styles, { NOTE_COLUMNS, CARD_SIZE, getCardSize } from '../styles';
-import { Note, ChecklistItem, ContentType, TextStyle, DisplayNote, Tab, NoteMargins, DEFAULT_MARGINS, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder } from '../types';
+import { Note, ChecklistItem, ContentType, TextStyle, DisplayNote, Tab, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder } from '../types';
 import {
   COLORS,
   TEXT_COLORS,
@@ -73,6 +73,8 @@ const MainScreen = () => {
   const [useSvgBackground, setUseSvgBackground] = useState(false);
   const [svgFrameId, setSvgFrameId] = useState<string | undefined>(undefined);
   const [selectedMargins, setSelectedMargins] = useState<NoteMargins>(DEFAULT_MARGINS);
+  const [selectedItemSpacing, setSelectedItemSpacing] = useState<ItemSpacing>(DEFAULT_ITEM_SPACING);
+  const [selectedLineSpacing, setSelectedLineSpacing] = useState<number>(DEFAULT_LINE_SPACING);
   const [selectedChecklistSort, setSelectedChecklistSort] = useState<ChecklistSort>('as-is');
   const [selectedChecklistTextMode, setSelectedChecklistTextMode] = useState<ChecklistTextMode>('single');
   const [tabs, setTabs] = useState<Tab[]>([
@@ -296,6 +298,8 @@ const MainScreen = () => {
     setUseSvgBackground(false);
     setSvgFrameId(undefined);
     setSelectedMargins(DEFAULT_MARGINS);
+    setSelectedItemSpacing(DEFAULT_ITEM_SPACING);
+    setSelectedLineSpacing(DEFAULT_LINE_SPACING);
     setSelectedChecklistSort('as-is');
     setSelectedChecklistTextMode('single');
     setShowModal(true);
@@ -334,6 +338,8 @@ const MainScreen = () => {
     setUseSvgBackground(note.useSvgBackground || false);
     setSvgFrameId(note.svgFrameId);
     setSelectedMargins(note.margins || DEFAULT_MARGINS);
+    setSelectedItemSpacing(note.itemSpacing || DEFAULT_ITEM_SPACING);
+    setSelectedLineSpacing(note.lineSpacing ?? DEFAULT_LINE_SPACING);
     setSelectedChecklistSort(note.checklistSort || 'as-is');
     setSelectedChecklistTextMode(note.checklistTextMode || 'single');
     setShowModal(true);
@@ -412,6 +418,8 @@ const MainScreen = () => {
               useSvgBackground,
               svgFrameId: useSvgBackground ? svgFrameId : undefined,
               margins: selectedMargins,
+              itemSpacing: selectedItemSpacing,
+              lineSpacing: selectedLineSpacing,
               checklistSort: selectedChecklistSort,
               checklistTextMode: selectedChecklistTextMode,
             }
@@ -433,6 +441,8 @@ const MainScreen = () => {
         useSvgBackground,
         svgFrameId: useSvgBackground ? svgFrameId : undefined,
         margins: selectedMargins,
+        itemSpacing: selectedItemSpacing,
+        lineSpacing: selectedLineSpacing,
         checklistSort: selectedChecklistSort,
         checklistTextMode: selectedChecklistTextMode,
       };
@@ -649,6 +659,10 @@ const MainScreen = () => {
         svgFrameId={svgFrameId}
         selectedMargins={selectedMargins}
         onMarginsChange={setSelectedMargins}
+        selectedItemSpacing={selectedItemSpacing}
+        onItemSpacingChange={setSelectedItemSpacing}
+        selectedLineSpacing={selectedLineSpacing}
+        onLineSpacingChange={setSelectedLineSpacing}
         selectedChecklistSort={selectedChecklistSort}
         onChecklistSortChange={setSelectedChecklistSort}
         selectedChecklistTextMode={selectedChecklistTextMode}

@@ -17,6 +17,8 @@ export interface StickieStyle {
   useSvgBackground: boolean;
   svgFrameId?: string;
   margins?: NoteMargins;
+  itemSpacing?: ItemSpacing;
+  lineSpacing?: number;
   checklistSort?: ChecklistSort;
   checklistTextMode?: ChecklistTextMode;
 }
@@ -50,6 +52,20 @@ export interface NoteMargins {
 
 export const DEFAULT_MARGINS: NoteMargins = { top: 0, bottom: 0, left: 0, right: 0 };
 
+// Vertical gap applied above/below each checklist item (row-to-row spacing),
+// as distinct from NoteMargins which pads the whole content area.
+export interface ItemSpacing {
+  top: number;
+  bottom: number;
+}
+
+export const DEFAULT_ITEM_SPACING: ItemSpacing = { top: 6, bottom: 6 };
+
+// Extra pixels added on top of fontSize to form a text note's lineHeight —
+// the analogous "spacing" control for text content, since text notes don't
+// have discrete items the way checklists do.
+export const DEFAULT_LINE_SPACING = 6;
+
 export interface Note {
   id: string;
   title: string;
@@ -65,6 +81,8 @@ export interface Note {
   useSvgBackground?: boolean;
   svgFrameId?: string;
   margins?: NoteMargins;
+  itemSpacing?: ItemSpacing;
+  lineSpacing?: number;
   checklistSort?: ChecklistSort;
   checklistTextMode?: ChecklistTextMode;
 }
