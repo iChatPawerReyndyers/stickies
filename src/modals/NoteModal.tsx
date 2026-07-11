@@ -144,6 +144,10 @@ type NoteModalProps = {
   onDisableDiscardConfirmation: () => void;
   previewMode?: boolean;
   initialShowStyling?: boolean;
+  // Read-only presentation: keeps the note's real styling/frame/colors but
+  // strips all editing affordances — no styling ('v') toggle, no footer
+  // buttons. Closed only via the ✕ in the top-right corner (calls onCancel).
+  viewOnly?: boolean;
 };
 
 // ── Snapshot type ──────────────────────────────────────────────────────────────
@@ -186,6 +190,7 @@ const NoteModal = ({
   showDiscardConfirmation, onDisableDiscardConfirmation,
   previewMode = false,
   initialShowStyling = false,
+  viewOnly = false,
 }: NoteModalProps) => {
   const [showStyling, setShowStyling] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -203,6 +208,10 @@ const NoteModal = ({
   // a second consecutive Backspace on a still-empty item deletes it.
   const backspacePendingRef = useRef<{ [id: string]: boolean }>({});
 
+  // Read-only note content is presented the same way as previewMode's
+  // (non-editable) rendering — this just extends that same rendering path.
+  const isReadOnlyContent = previewMode || viewOnly;
+
   const items: ChecklistItem[] = Array.isArray(content) ? (content as ChecklistItem[]) : [];
 
   const FrameComponent = useSvgBackground && svgFrameId ? FRAME_COMPONENTS[svgFrameId] : null;
@@ -218,8 +227,8 @@ const NoteModal = ({
 
   // If used as a preview, optionally open the styling bar immediately
   useEffect(() => {
-    if (visible && initialShowStyling) setShowStyling(true);
-  }, [visible, initialShowStyling]);
+    if (visible && initialShowStyling && !viewOnly) setShowStyling(true);
+  }, [visible, initialShowStyling, viewOnly]);
 
   // The styling bar and the keyboard should never be on screen together —
   // dismiss the keyboard any time the styling bar is opened.
@@ -407,15 +416,25 @@ const NoteModal = ({
             {/* Header */}
             <View style={s.topToolbar}>
               <Text style={s.headerLabel} numberOfLines={1}>{tabName}</Text>
-              <TouchableOpacity
-                onPress={showStyling ? saveStyling : openStyling}
-                activeOpacity={0.7}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Text style={[s.arrowIconV, showStyling && { color: '#007AFF' }]}>
-                  {showStyling ? '✓' : 'v'}
-                </Text>
-              </TouchableOpacity>
+              {viewOnly ? (
+                <TouchableOpacity
+                  onPress={onCancel}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={s.closeIconX}>✕</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={showStyling ? saveStyling : openStyling}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={[s.arrowIconV, showStyling && { color: '#007AFF' }]}>
+                    {showStyling ? '✓' : 'v'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={s.dividerLine} />
@@ -432,11 +451,11 @@ const NoteModal = ({
                 showsVerticalScrollIndicator
               >
                 {displayedChecklistItems.map((item, index) => {
-                  if (previewMode) {
+                  if (isReadOnlyContent) {
                     if (index === 0) {
                       return (
                         <View key={item.id} style={clStyles.titleRow}>
-                          <Text style={[clStyles.titleInput, { fontSize: Math.max(selectedFontSize + 4, 18) }]}>{item.text}</Text>
+                          <Text style={[clStyles.titleInput, getTextStyle(), { fontSize: Math.max(selectedFontSize + 4, 18) }]}>{item.text}</Text>
                         </View>
                       );
                     }
@@ -447,7 +466,7 @@ const NoteModal = ({
                         </View>
                         <View style={clStyles.inputWrap}>
                           {selectedChecklistTextMode === 'single' && <BrushStroke index={index} />}
-                          <Text style={[clStyles.input, { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}>{item.text}</Text>
+                          <Text style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}>{item.text}</Text>
                         </View>
                       </View>
                     );
@@ -457,7 +476,7 @@ const NoteModal = ({
                       <View key={item.id} style={clStyles.titleRow}>
                         <TextInput
                           ref={el => { inputRefs.current[item.id] = el; }}
-                          style={[clStyles.titleInput, { fontSize: Math.max(selectedFontSize + 4, 18) }]}
+                          style={[clStyles.titleInput, getTextStyle(), { fontSize: Math.max(selectedFontSize + 4, 18) }]}
                           placeholder="Title..."
                           placeholderTextColor="#8E8E93"
                           value={item.text}
@@ -483,7 +502,7 @@ const NoteModal = ({
                         {selectedChecklistTextMode === 'single' && <BrushStroke index={index} />}
                         <TextInput
                           ref={el => { inputRefs.current[item.id] = el; }}
-                          style={[clStyles.input, { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}
+                          style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}
                           placeholder="List item..."
                           placeholderTextColor="transparent"
                           value={item.text}
@@ -538,7 +557,7 @@ const NoteModal = ({
               </ScrollView>
             ) : (
               <View style={{ flex: 1 }}>
-                {!previewMode ? (
+                {!isReadOnlyContent ? (
                   <TextInput
                     style={[s.textInput, getTextStyle(), {
                       paddingTop: 12 + selectedMargins.top,
@@ -552,7 +571,7 @@ const NoteModal = ({
                     value={typeof content === 'string' ? content : ''}
                     onChangeText={onContentChange}
                     textAlignVertical="top"
-                    autoFocus={!previewMode}
+                    autoFocus={!isReadOnlyContent}
                     underlineColorAndroid="transparent"
                   />
                 ) : (
@@ -564,27 +583,30 @@ const NoteModal = ({
             )}
             </View>
 
-            <View style={s.dividerLine} />
-
-            {/* Footer */}
-            {previewMode ? (
-              <View style={s.actionRow}>
-                <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
-                  <Text style={s.cancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.btn, s.btnConfirm]} onPress={onSave} activeOpacity={0.8}>
-                  <Text style={s.confirmText}>Save</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={s.actionRow}>
-                <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
-                  <Text style={s.cancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.btn, s.btnConfirm]} onPress={onSave} activeOpacity={0.8}>
-                  <Text style={s.confirmText}>Confirm</Text>
-                </TouchableOpacity>
-              </View>
+            {/* Footer — hidden entirely in viewOnly mode; closing happens only via the ✕ */}
+            {!viewOnly && (
+              <>
+                <View style={s.dividerLine} />
+                {previewMode ? (
+                  <View style={s.actionRow}>
+                    <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
+                      <Text style={s.cancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.btn, s.btnConfirm]} onPress={onSave} activeOpacity={0.8}>
+                      <Text style={s.confirmText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={s.actionRow}>
+                    <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
+                      <Text style={s.cancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.btn, s.btnConfirm]} onPress={onSave} activeOpacity={0.8}>
+                      <Text style={s.confirmText}>Confirm</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
             )}
 
           </View>
@@ -933,6 +955,9 @@ const s = StyleSheet.create({
   arrowIconV: {
     fontSize: 16, fontWeight: '600', color: '#000000',
     transform: [{ scaleX: 1.3 }],
+  },
+  closeIconX: {
+    fontSize: 18, fontWeight: '700', color: '#1C1C1E',
   },
   dividerLine: { height: 1, backgroundColor: '#E5E5EA' },
   textInput: { flex: 1, padding: 0 },

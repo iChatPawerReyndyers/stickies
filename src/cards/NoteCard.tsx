@@ -26,16 +26,38 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
     return baseStyle;
   };
 
+  const m = note.margins || { top: 0, bottom: 0, left: 0, right: 0 };
+  const cardMargin = {
+    paddingTop: m.top * 0.34,
+    paddingBottom: m.bottom * 0.34,
+    paddingLeft: m.left * 0.42,
+    paddingRight: m.right * 0.42,
+  };
+
+  // How much vertical room the preview actually has to work with: the card's
+  // own padding (12 top + 12 bottom), the note's own margins, and cardContent's
+  // marginBottom — same box model used when rendering, so this stays accurate
+  // across grid column counts and per-note margin settings.
+  const availableHeight = Math.max(
+    0,
+    size - 24 - cardMargin.paddingTop - cardMargin.paddingBottom - 8
+  );
+
   const renderPreview = () => {
     const textStyle = getTextStyle();
 
     if (note.contentType === 'text') {
-      // Show the full content text exactly as typed, just small.
-      // Same 0.34 scale factor used elsewhere so the preview's line spacing
-      // stays proportional to what's set in the styling bar.
+      // Show as many wrapped lines as will actually fit, then let RN's own
+      // tail-ellipsis show "…" if there's more than that.
       const lineSpacing = note.lineSpacing ?? DEFAULT_LINE_SPACING;
+      const lineHeightPx = 8 + lineSpacing * 0.34;
+      const maxLines = Math.max(1, Math.floor(availableHeight / lineHeightPx));
       return (
-        <Text style={[styles.cardPreview, textStyle, { lineHeight: 8 + lineSpacing * 0.34 }]} numberOfLines={10}>
+        <Text
+          style={[styles.cardPreview, textStyle, { lineHeight: lineHeightPx }]}
+          numberOfLines={maxLines}
+          ellipsizeMode="tail"
+        >
           {note.content as string}
         </Text>
       );
@@ -59,6 +81,17 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
     // row gap stays proportional to what's set in the styling bar.
     const spacing = note.itemSpacing || DEFAULT_ITEM_SPACING;
     const rowSpacingStyle = { marginTop: spacing.top * 0.34, marginBottom: spacing.bottom * 0.34 };
+    const rowGap = spacing.top * 0.34 + spacing.bottom * 0.34;
+
+    // Estimate how many item rows fit below the title, then cut the list short
+    // with a dedicated "…" row instead of letting items overflow and get
+    // silently clipped by the card's overflow:hidden.
+    const titleRowHeight = titleItem?.text ? 8 * 1.2 + 3 : 0;
+    const itemRowHeight = 8 * 1.2 + rowGap;
+    const maxItemsFit = Math.max(0, Math.floor((availableHeight - titleRowHeight) / itemRowHeight));
+    const hasOverflow = checkItems.length > maxItemsFit;
+    // Reserve one slot for the "…" row itself when there's overflow.
+    const visibleItems = hasOverflow ? checkItems.slice(0, Math.max(0, maxItemsFit - 1)) : checkItems;
 
     return (
       <View>
@@ -70,7 +103,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
             {titleItem.text}
           </Text>
         ) : null}
-        {checkItems.map((item: any) => (
+        {visibleItems.map((item: any) => (
           <View key={item.id} style={[{ flexDirection: 'row', alignItems: note.checklistTextMode === 'wrap' ? 'flex-start' : 'center' }, rowSpacingStyle]}>
             {/* Mini checkbox matching the modal's rounded-square shape */}
             <View style={{
@@ -95,6 +128,9 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
             </Text>
           </View>
         ))}
+        {hasOverflow && (
+          <Text style={[styles.cardPreview, textStyle, rowSpacingStyle]}>…</Text>
+        )}
       </View>
     );
   };
@@ -102,14 +138,6 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
   const FrameComponent = note.useSvgBackground && note.svgFrameId
     ? FRAME_COMPONENTS[note.svgFrameId]
     : null;
-
-  const m = note.margins || { top: 0, bottom: 0, left: 0, right: 0 };
-  const cardMargin = {
-    paddingTop: m.top * 0.34,
-    paddingBottom: m.bottom * 0.34,
-    paddingLeft: m.left * 0.42,
-    paddingRight: m.right * 0.42,
-  };
 
   return (
     <TouchableOpacity

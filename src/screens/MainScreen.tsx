@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  PanResponder,
-  Animated,
-  StyleSheet,
-  GestureResponderEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,7 +14,7 @@ import NoteModal from '../modals/NoteModal';
 import TabModal from '../modals/TabModal';
 import SettingsModal from '../modals/SettingsModal';
 import ReadOnlyModal from '../modals/ReadOnlyModal';
-import styles, { NOTE_COLUMNS, CARD_SIZE, getCardSize } from '../styles';
+import styles, { getCardSize } from '../styles';
 import { Note, ChecklistItem, ContentType, TextStyle, DisplayNote, Tab, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder } from '../types';
 import {
   COLORS,
@@ -30,6 +26,8 @@ import {
   TRASH_TAB_COLOR,
 } from '../constants';
 import { getRandomFrameId } from '../frames';
+import { NeuView, NeuPressable } from '../components/Neumorphic';
+import { NEU_ACCENT } from '../theme/neumorphic';
 
 const NOTES_KEY = '@sticky_notes_notes_v1';
 const TABS_KEY = '@sticky_notes_tabs_v1';
@@ -87,6 +85,11 @@ const MainScreen = () => {
   const [editingTab, setEditingTab] = useState<Tab | null>(null);
   const [readOnlyNote, setReadOnlyNote] = useState<Note | null>(null);
   const [showReadOnlyModal, setShowReadOnlyModal] = useState(false);
+  // View Only — opened via long-press on any note card. Reuses NoteModal in
+  // its `viewOnly` mode so the note's real color/font/SVG frame render
+  // exactly as saved, with no editing affordances.
+  const [viewOnlyNote, setViewOnlyNote] = useState<Note | null>(null);
+  const [showViewOnlyModal, setShowViewOnlyModal] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
@@ -94,102 +97,11 @@ const MainScreen = () => {
   const updateSettings = (patch: Partial<AppSettings>) =>
     setSettings(prev => ({ ...prev, ...patch }));
 
-  // ── Drag-and-drop state (pure PanResponder, no native deps) ─────────────────
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragSourceIndex, setDragSourceIndex] = useState<number | null>(null);
-  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
-  const dragX = useRef(new Animated.Value(0)).current;
-  const dragY = useRef(new Animated.Value(0)).current;
-  // Refs so PanResponder callbacks (created once) always see latest values
-  const dragSrcRef = useRef<number | null>(null);
-  const gridRef = useRef<View>(null);
-  const gridPos = useRef({ x: 0, y: 0 });
-  const visibleNotesRef = useRef<Note[]>([]);
-  const activeTabIdRef = useRef(activeTabId);
-  useEffect(() => { activeTabIdRef.current = activeTabId; }, [activeTabId]);
+  // Single source of truth for grid column count — drives FlatList's
+  // numColumns, per-item right-margin, and placeholder padding below, so the
+  // whole grid always agrees on how many columns actually exist.
+  const numColumns = settings.gridColumns;
 
-  const measureGrid = () => {
-    gridRef.current?.measure((_x, _y, _w, _h, pageX, pageY) => {
-      gridPos.current = { x: pageX, y: pageY };
-    });
-  };
-
-  const getDropIndex = (pageX: number, pageY: number): number => {
-    const relX = pageX - gridPos.current.x - 8;
-    const relY = pageY - gridPos.current.y - 8;
-    const numCols = settings.gridColumns;
-    const cs = getCardSize(numCols);
-    const cell = cs + 8;
-    const col = Math.max(0, Math.min(numCols - 1, Math.floor(relX / cell)));
-    const row = Math.max(0, Math.floor(relY / cell));
-    return Math.min(
-      Math.max(0, visibleNotesRef.current.length - 1),
-      row * numCols + col,
-    );
-  };
-  const getDropIndexRef = useRef(getDropIndex);
-  useEffect(() => { getDropIndexRef.current = getDropIndex; });
-
-  const applyReorder = (srcIdx: number, tgtIdx: number) => {
-    if (srcIdx === tgtIdx) return;
-    const visible = [...visibleNotesRef.current];
-    if (srcIdx >= visible.length || tgtIdx >= visible.length) return;
-    const [moved] = visible.splice(srcIdx, 1);
-    visible.splice(tgtIdx, 0, moved);
-    const tab = activeTabIdRef.current;
-    if (tab === 'all') {
-      setNotes(visible);
-    } else {
-      setNotes(prev => {
-        const result = [...prev];
-        const positions: number[] = [];
-        result.forEach((n, i) => { if (n.tabId === tab) positions.push(i); });
-        positions.forEach((pos, i) => { if (visible[i]) result[pos] = visible[i]; });
-        return result;
-      });
-    }
-  };
-  const applyReorderRef = useRef(applyReorder);
-  useEffect(() => { applyReorderRef.current = applyReorder; });
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, { moveX, moveY }) => {
-        dragX.setValue(moveX - CARD_SIZE / 2);
-        dragY.setValue(moveY - CARD_SIZE / 2);
-        setDropTargetIndex(getDropIndexRef.current(moveX, moveY));
-      },
-      onPanResponderRelease: (_, { moveX, moveY }) => {
-        const tgt = getDropIndexRef.current(moveX, moveY);
-        if (dragSrcRef.current !== null) applyReorderRef.current(dragSrcRef.current, tgt);
-        dragSrcRef.current = null;
-        setIsDragging(false);
-        setDragSourceIndex(null);
-        setDropTargetIndex(null);
-      },
-      onPanResponderTerminate: () => {
-        dragSrcRef.current = null;
-        setIsDragging(false);
-        setDragSourceIndex(null);
-        setDropTargetIndex(null);
-      },
-    })
-  ).current;
-
-  const handleLongPress = (index: number, event: GestureResponderEvent) => {
-    if (activeTabIdRef.current === 'trash') return;
-    const { pageX, pageY } = event.nativeEvent;
-    measureGrid();
-    dragSrcRef.current = index;
-    dragX.setValue(pageX - CARD_SIZE / 2);
-    dragY.setValue(pageY - CARD_SIZE / 2);
-    setDragSourceIndex(index);
-    setDropTargetIndex(index);
-    setIsDragging(true);
-  };
-  // ─────────────────────────────────────────────────────────────────────────────
   const nonTrashTabs = tabs.filter(t => t.id !== 'trash');
   const trashTab = tabs.find(t => t.id === 'trash');
 
@@ -308,6 +220,16 @@ const MainScreen = () => {
   const openReadOnly = (note: Note) => {
     setReadOnlyNote(note);
     setShowReadOnlyModal(true);
+  };
+
+  const openViewOnlyModal = (note: Note) => {
+    setViewOnlyNote(note);
+    setShowViewOnlyModal(true);
+  };
+
+  const closeViewOnlyModal = () => {
+    setShowViewOnlyModal(false);
+    setViewOnlyNote(null);
   };
 
   const createNewTab = () => {
@@ -468,7 +390,7 @@ const MainScreen = () => {
   };
 
   const renderItem = ({ item, index }: { item: DisplayNote; index: number }) => {
-    const itemStyle = index % NOTE_COLUMNS === NOTE_COLUMNS - 1
+    const itemStyle = index % numColumns === numColumns - 1
       ? { marginRight: 0 }
       : { marginRight: 8 };
 
@@ -477,19 +399,14 @@ const MainScreen = () => {
     }
 
     const note = item as Note;
-    const isSource = isDragging && dragSourceIndex === index;
-    const isTarget = isDragging && dropTargetIndex === index && dropTargetIndex !== dragSourceIndex;
 
     return (
-      <View style={[itemStyle, isSource && { opacity: 0.3 }]}>
-        {isTarget && (
-          <View style={dragStyles.dropHighlight} pointerEvents="none" />
-        )}
+      <View style={itemStyle}>
         <NoteCard
           note={note}
-          onEdit={() => isDragging ? null : (note.tabId === 'trash' ? openReadOnly(note) : editNote(note))}
+          onEdit={() => (note.tabId === 'trash' ? openReadOnly(note) : editNote(note))}
           onDelete={() => deleteNote(note.id)}
-          onLongPress={(e) => handleLongPress(index, e)}
+          onLongPress={() => openViewOnlyModal(note)}
           cardSize={cardSize}
         />
       </View>
@@ -509,25 +426,29 @@ const MainScreen = () => {
     return sorted;
   })();
 
-  const cardSize = getCardSize(settings.gridColumns);
-  const placeholdersNeeded = (NOTE_COLUMNS - (baseNotes.length % NOTE_COLUMNS)) % NOTE_COLUMNS;
+  const cardSize = getCardSize(numColumns);
+  const placeholdersNeeded = (numColumns - (baseNotes.length % numColumns)) % numColumns;
   const displayedNotes: DisplayNote[] = [...baseNotes];
   for (let i = 0; i < placeholdersNeeded; i += 1) {
     displayedNotes.push({ id: `placeholder-${i}`, placeholder: true });
   }
-  // Keep ref current for PanResponder callbacks
-  visibleNotesRef.current = baseNotes.filter((n): n is Note => !('placeholder' in n));
 
   const noteModalTabId = editingNote ? editingNote.tabId : activeTabId;
   const noteModalTabName = tabs.find(t => t.id === noteModalTabId)?.name || 'General';
+  const viewOnlyTabName = tabs.find(t => t.id === viewOnlyNote?.tabId)?.name || 'General';
 
   return (
     <SafeAreaView style={[styles.container, settings.theme === 'dark' && { backgroundColor: '#1C1C1E' }]}>
       <View style={[styles.header, styles.headerSpacing]}>
         <Text style={styles.headerTitle}>Stickies</Text>
-        <TouchableOpacity onPress={() => setShowSettings(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={{ fontSize: 22, color: '#333' }}>⚙️</Text>
-        </TouchableOpacity>
+        <NeuPressable
+          radius={20}
+          style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+          onPress={() => setShowSettings(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={{ fontSize: 18, color: NEU_ACCENT }}>⚙️</Text>
+        </NeuPressable>
       </View>
 
       <View style={styles.mainContentRow}>
@@ -540,76 +461,82 @@ const MainScreen = () => {
             const isActive = activeTabId === tab.id;
             return (
               <View key={tab.id} style={styles.tabPillGroup}>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={[
-                    styles.tabPill,
-                    { backgroundColor: tab.color, shadowColor: tab.color },
-                    isActive && styles.tabPillActive,
-                  ]}
-                  onPress={() => setActiveTabId(tab.id)}
-                  onLongPress={() => { setEditingTab(tab); setShowTabModal(true); }}
+                <NeuView
+                  radius={16}
+                  backgroundColor={tab.color}
+                  inset={isActive}
+                  style={{ width: 32, height: 80, marginBottom: 4 }}
                 >
-                  <View style={styles.tabPillLabelWrapper}>
-                    <Text
-                      style={[styles.tabPillLabelText, { color: tab.textColor || '#FFFFFF' }, isActive && styles.tabPillLabelTextActive]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.5}
-                    >
-                      {tab.name}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+                    onPress={() => setActiveTabId(tab.id)}
+                    onLongPress={() => { setEditingTab(tab); setShowTabModal(true); }}
+                  >
+                    <View style={styles.tabPillLabelWrapper}>
+                      <Text
+                        style={[styles.tabPillLabelText, { color: tab.textColor || '#FFFFFF' }, isActive && styles.tabPillLabelTextActive]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.5}
+                      >
+                        {tab.name}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </NeuView>
                 <View style={styles.tabPillConnector} />
               </View>
             );
           })}
 
-          <TouchableOpacity activeOpacity={0.7} onPress={createNewTab} style={styles.tabPillAddButton}>
-            <Text style={styles.tabPillAddButtonText}>+</Text>
-          </TouchableOpacity>
+          <NeuPressable
+            radius={16}
+            style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}
+            onPress={createNewTab}
+          >
+            <Text style={{ fontSize: 18, fontWeight: '700', color: NEU_ACCENT, lineHeight: 20 }}>+</Text>
+          </NeuPressable>
 
           {trashTab && (
             <View style={styles.tabPillDivider}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[
-                  styles.tabPill,
-                  { backgroundColor: trashTab.color, shadowColor: trashTab.color },
-                  activeTabId === trashTab.id && styles.tabPillActive,
-                ]}
-                onPress={() => setActiveTabId(trashTab.id)}
-                onLongPress={() => { setEditingTab(trashTab); setShowTabModal(true); }}
+              <NeuView
+                radius={16}
+                backgroundColor={trashTab.color}
+                inset={activeTabId === trashTab.id}
+                style={{ width: 32, height: 80 }}
               >
-                <View style={styles.tabPillLabelWrapper}>
-                  <Text
-                    style={[styles.tabPillLabelText, { color: trashTab.textColor || '#FFFFFF' }, activeTabId === trashTab.id && styles.tabPillLabelTextActive]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.5}
-                  >
-                    {trashTab.name}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={() => setActiveTabId(trashTab.id)}
+                  onLongPress={() => { setEditingTab(trashTab); setShowTabModal(true); }}
+                >
+                  <View style={styles.tabPillLabelWrapper}>
+                    <Text
+                      style={[styles.tabPillLabelText, { color: trashTab.textColor || '#FFFFFF' }, activeTabId === trashTab.id && styles.tabPillLabelTextActive]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.5}
+                    >
+                      {trashTab.name}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </NeuView>
             </View>
           )}
         </ScrollView>
 
-        <View
-          style={styles.mainContentArea}
-          ref={gridRef}
-          onLayout={measureGrid}
-        >
+        <View style={styles.mainContentArea}>
           <FlatList
+            key={`grid-${numColumns}`}
             data={displayedNotes}
             keyExtractor={item => item.id}
-            numColumns={NOTE_COLUMNS}
+            numColumns={numColumns}
             columnWrapperStyle={styles.noteGrid}
             contentContainerStyle={styles.listContent}
             renderItem={renderItem}
-            scrollEnabled={!isDragging}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>No notes yet. Create one to get started!</Text>
@@ -672,6 +599,47 @@ const MainScreen = () => {
         onSave={saveNote}
         onCancel={() => setShowModal(false)}
       />
+
+      {/* View Only — long-press any note card. Renders the note exactly as
+          saved (color/font/SVG frame) with no editing controls; closes only
+          via the ✕ in the top-right corner. */}
+      <NoteModal
+        visible={showViewOnlyModal}
+        tabName={viewOnlyTabName}
+        contentType={viewOnlyNote?.contentType || 'text'}
+        onContentTypeChange={() => {}}
+        content={viewOnlyNote?.content ?? ''}
+        onContentChange={() => {}}
+        selectedColor={viewOnlyNote?.color || COLORS[0]}
+        onColorChange={() => {}}
+        selectedTextColor={viewOnlyNote?.textColor || TEXT_COLORS[0]}
+        onTextColorChange={() => {}}
+        selectedFont={viewOnlyNote?.fontFamily || FONTS[0].value}
+        onFontChange={() => {}}
+        selectedFontSize={viewOnlyNote?.fontSize || 16}
+        onFontSizeChange={() => {}}
+        selectedTextStyle={viewOnlyNote?.textStyle || 'normal'}
+        onTextStyleChange={() => {}}
+        useSvgBackground={viewOnlyNote?.useSvgBackground || false}
+        onUseSvgBackgroundChange={() => {}}
+        svgFrameId={viewOnlyNote?.svgFrameId}
+        selectedMargins={viewOnlyNote?.margins || DEFAULT_MARGINS}
+        onMarginsChange={() => {}}
+        selectedItemSpacing={viewOnlyNote?.itemSpacing || DEFAULT_ITEM_SPACING}
+        onItemSpacingChange={() => {}}
+        selectedLineSpacing={viewOnlyNote?.lineSpacing ?? DEFAULT_LINE_SPACING}
+        onLineSpacingChange={() => {}}
+        selectedChecklistSort={viewOnlyNote?.checklistSort || 'as-is'}
+        onChecklistSortChange={() => {}}
+        selectedChecklistTextMode={viewOnlyNote?.checklistTextMode || 'single'}
+        onChecklistTextModeChange={() => {}}
+        onSave={() => {}}
+        onCancel={closeViewOnlyModal}
+        showDiscardConfirmation={false}
+        onDisableDiscardConfirmation={() => {}}
+        viewOnly
+      />
+
       <SettingsModal
         visible={showSettings}
         onClose={() => setShowSettings(false)}
@@ -688,65 +656,15 @@ const MainScreen = () => {
         }}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={createNewNote} activeOpacity={0.85}>
+      <NeuPressable
+        radius={28}
+        style={{ position: 'absolute', bottom: 32, right: 32, width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+        onPress={createNewNote}
+      >
         <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
-
-      {/* Drag overlay — full-screen touch capture + floating card */}
-      {isDragging && (
-        <>
-          <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} />
-          {dragSourceIndex !== null && baseNotes[dragSourceIndex] && (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                dragStyles.floatingCard,
-                { left: dragX, top: dragY, width: cardSize, height: cardSize },
-                { backgroundColor: (baseNotes[dragSourceIndex] as Note).color },
-              ]}
-            >
-              <Text style={dragStyles.floatingTitle} numberOfLines={2}>
-                {(baseNotes[dragSourceIndex] as Note).title}
-              </Text>
-            </Animated.View>
-          )}
-        </>
-      )}
+      </NeuPressable>
     </SafeAreaView>
   );
 };
 
 export default MainScreen;
-
-
-const dragStyles = StyleSheet.create({
-  floatingCard: {
-    position: 'absolute',
-    width: CARD_SIZE,
-    height: CARD_SIZE,
-    borderRadius: 8,
-    padding: 12,
-    opacity: 0.92,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 20,
-    justifyContent: 'center',
-    transform: [{ scale: 1.06 }],
-  },
-  floatingTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#333',
-  },
-  dropHighlight: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    borderRadius: 8,
-    borderWidth: 2.5,
-    borderColor: '#007AFF',
-    borderStyle: 'dashed',
-    zIndex: 1,
-  },
-});

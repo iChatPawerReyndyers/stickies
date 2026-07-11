@@ -5,25 +5,23 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
   Share,
   Alert,
   TextInput,
   SafeAreaView,
   Pressable,
   Dimensions,
-  Platform,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { AppSettings, AppTheme, SortOrder, Note, Tab, TextStyle, ContentType, ChecklistItem, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, NoteMargins } from '../types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.24);
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import NoteModal from './NoteModal';
 import { FRAME_IDS } from '../frames';
 import { createStickieStyle } from '../utils/stickieStyles';
+import { NeuView, NeuPressable, NeuToggle, NeuRadio } from '../components/Neumorphic';
+import { NEU_BASE, NEU_ACCENT, NEU_DANGER, NEU_TEXT_PRIMARY, NEU_TEXT_SECONDARY, NEU_RADIUS, getNeuPalette } from '../theme/neumorphic';
 
 type SettingsModalProps = {
   visible: boolean;
@@ -51,7 +49,6 @@ const SettingsModal = ({
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
   const [showStyleEditor, setShowStyleEditor] = useState(false);
-  const [showStyleControls, setShowStyleControls] = useState(false);
   const [draftStyleName, setDraftStyleName] = useState('');
   const [draftColor, setDraftColor] = useState(settings.defaultColor);
   const [draftTextColor, setDraftTextColor] = useState(settings.defaultTextColor);
@@ -67,11 +64,9 @@ const SettingsModal = ({
   const [draftChecklistTextMode, setDraftChecklistTextMode] = useState<ChecklistTextMode>('single');
 
   const isDark = settings.theme === 'dark';
-  const bg   = isDark ? '#1C1C1E' : '#F2F2F7';
-  const card = isDark ? '#2C2C2E' : '#FFFFFF';
-  const text = isDark ? '#FFFFFF' : '#1C1C1E';
-  const sub  = isDark ? '#8E8E93' : '#6C6C70';
-  const sep  = isDark ? '#3C3C3E' : '#E5E5EA';
+  const p = getNeuPalette(isDark);
+  const text = p.textPrimary;
+  const sub = p.textSecondary;
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -113,27 +108,10 @@ const SettingsModal = ({
     }
   };
 
-  // ── Section / Row helpers ────────────────────────────────────────────────────
-
-  const SectionHeader = ({ label }: { label: string }) => (
-    <Text style={[s.sectionHeader, { color: sub }]}>{label}</Text>
-  );
-
-  const Row = ({ children, last }: { children: React.ReactNode; last?: boolean }) => (
-    <View style={[s.row, { backgroundColor: card, borderBottomColor: sep }, last && { borderBottomWidth: 0 }]}>
-      {children}
-    </View>
-  );
-
-  const RowLabel = ({ label }: { label: string }) => (
-    <Text style={[s.rowLabel, { color: text }]}>{label}</Text>
-  );
-
   useEffect(() => {
     if (!visible) return;
     setDraftStyleName('');
     setShowStyleEditor(false);
-    setShowStyleControls(false);
     setDraftColor(settings.defaultColor);
     setDraftTextColor(settings.defaultTextColor);
     setDraftFont(settings.defaultFont);
@@ -208,13 +186,13 @@ const SettingsModal = ({
 
   const previewText = draftContentType === 'checklist'
     ? '• Checklist'
-    : 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.';
+    : 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
 
   const previewContent: string | ChecklistItem[] = draftContentType === 'checklist'
     ? [
       { id: 'p1', text: 'Lorem ipsum dolor', completed: false },
-      { id: 'p2', text: 'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. ', completed: false },
-      { id: 'p3', text: 'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.', completed: false },
+      { id: 'p2', text: 'Ut enim ad minim veniam, quis nostrud exercitation.', completed: false },
+      { id: 'p3', text: 'Duis aute irure dolor in reprehenderit.', completed: false },
     ]
     : previewText;
 
@@ -227,288 +205,334 @@ const SettingsModal = ({
     textDecorationLine: draftTextStyle === 'underline' ? 'underline' : 'none',
   };
 
+  // ── Small building blocks ────────────────────────────────────────────────────
+
+  const SectionHeader = ({ label }: { label: string }) => (
+    <Text style={{ fontSize: 10, fontWeight: '700', color: sub, letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 18, marginBottom: 8, marginLeft: 4 }}>
+      {label}
+    </Text>
+  );
+
+  const SectionCard = ({ children }: { children: React.ReactNode }) => (
+    <NeuView isDark={isDark} radius={NEU_RADIUS.lg} style={{ padding: 14 }}>
+      {children}
+    </NeuView>
+  );
+
+  const Row = ({ children, last }: { children: React.ReactNode; last?: boolean }) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: last ? 0 : 1, borderBottomColor: `${p.darkShadow}30` }}>
+      {children}
+    </View>
+  );
+
+  const RowLabel = ({ label, hint }: { label: string; hint?: string }) => (
+    <View style={{ flex: 1 }}>
+      <Text style={{ fontSize: 13, color: text, fontWeight: '500' }}>{label}</Text>
+      {hint && <Text style={{ fontSize: 10, color: sub, marginTop: 2 }}>{hint}</Text>}
+    </View>
+  );
+
+  const NeuChip = ({ label, active, onPress, small }: { label: string; active: boolean; onPress: () => void; small?: boolean }) => (
+    <NeuPressable
+      isDark={isDark}
+      radius={9}
+      backgroundColor={active ? NEU_ACCENT : undefined}
+      style={{ paddingHorizontal: small ? 10 : 12, paddingVertical: small ? 6 : 7 }}
+      onPress={onPress}
+    >
+      <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : sub }}>{label}</Text>
+    </NeuPressable>
+  );
+
+  const NeuStepper = ({ value, onDecrement, onIncrement }: { value: number | string; onDecrement: () => void; onIncrement: () => void }) => (
+    <NeuView isDark={isDark} inset radius={9} style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <TouchableOpacity style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }} onPress={onDecrement}>
+        <Text style={{ fontSize: 16, color: NEU_ACCENT }}>−</Text>
+      </TouchableOpacity>
+      <Text style={{ width: 30, textAlign: 'center', fontSize: 12, fontWeight: '700', color: text }}>{value}</Text>
+      <TouchableOpacity style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }} onPress={onIncrement}>
+        <Text style={{ fontSize: 16, color: NEU_ACCENT }}>+</Text>
+      </TouchableOpacity>
+    </NeuView>
+  );
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={[s.container, { backgroundColor: bg }]}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: p.base }}>
 
-        {/* Header */}
-        <View style={[s.header, { backgroundColor: card, borderBottomColor: sep }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
           <TouchableOpacity onPress={onClose}>
-            <Text style={s.backBtn}>← Back</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: text }}>← Back</Text>
           </TouchableOpacity>
-          <Text style={[s.title, { color: text }]}>Settings</Text>
-          <View style={{ width: 60 }} />
+          <Text style={{ fontSize: 16, fontWeight: '700', color: text }}>Settings</Text>
+          <View style={{ width: 50 }} />
         </View>
 
-        <ScrollView contentContainerStyle={s.scroll}>
+        <ScrollView contentContainerStyle={{ padding: 16 }}>
 
           {/* ── APPEARANCE ── */}
-          <SectionHeader label="APPEARANCE" />
-          <View style={[s.card, { backgroundColor: card }]}>
+          <SectionHeader label="Appearance" />
+          <SectionCard>
             <Row>
               <RowLabel label="Theme" />
-              <View style={s.segmented}>
+              <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3 }}>
                 {(['light', 'dark'] as AppTheme[]).map(t => (
-                  <TouchableOpacity
+                  <NeuPressable
                     key={t}
-                    style={[s.seg, settings.theme === t && s.segActive]}
+                    isDark={isDark}
+                    radius={8}
+                    backgroundColor={settings.theme === t ? p.base : undefined}
+                    style={{ paddingHorizontal: 12, paddingVertical: 6 }}
                     onPress={() => onUpdateSettings({ theme: t })}
                   >
-                    <Text style={[s.segText, settings.theme === t && s.segTextActive]}>
-                      {t === 'light' ? '☀️ Light' : '🌙 Dark'}
+                    <Text style={{ fontSize: 11, fontWeight: settings.theme === t ? '700' : '400', color: settings.theme === t ? text : sub }}>
+                      {t === 'light' ? 'Light' : 'Dark'}
                     </Text>
-                  </TouchableOpacity>
+                  </NeuPressable>
                 ))}
-              </View>
+              </NeuView>
             </Row>
 
             <Row>
               <View style={{ flex: 1 }}>
-                <RowLabel label="Default Note Color" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                <RowLabel label="Default note color" />
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                   {COLORS.map(color => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[s.swatch, { backgroundColor: color }, settings.defaultColor === color && s.swatchSel]}
-                      onPress={() => onUpdateSettings({ defaultColor: color })}
-                    >
-                      {settings.defaultColor === color && <Text style={s.swatchCheck}>✓</Text>}
+                    <TouchableOpacity key={color} onPress={() => onUpdateSettings({ defaultColor: color })}>
+                      <NeuView
+                        isDark={isDark}
+                        radius={9}
+                        backgroundColor={color}
+                        style={[
+                          { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+                          settings.defaultColor === color && { borderWidth: 2, borderColor: text },
+                        ]}
+                      >
+                        {settings.defaultColor === color && <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>✓</Text>}
+                      </NeuView>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </View>
               </View>
             </Row>
 
             <Row>
               <View style={{ flex: 1 }}>
-                <RowLabel label="Default Text Color" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                <RowLabel label="Default text color" />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                   {TEXT_COLORS.map(color => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[s.swatch, { backgroundColor: color }, settings.defaultTextColor === color && s.swatchSel]}
-                      onPress={() => onUpdateSettings({ defaultTextColor: color })}
-                    >
-                      {settings.defaultTextColor === color && <Text style={[s.swatchCheck, { color: '#FFF' }]}>✓</Text>}
+                    <TouchableOpacity key={color} onPress={() => onUpdateSettings({ defaultTextColor: color })}>
+                      <NeuView
+                        isDark={isDark}
+                        radius={9}
+                        backgroundColor={color}
+                        style={[
+                          { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
+                          settings.defaultTextColor === color && { borderWidth: 2, borderColor: NEU_ACCENT },
+                        ]}
+                      >
+                        {settings.defaultTextColor === color && <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF' }}>✓</Text>}
+                      </NeuView>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </View>
               </View>
             </Row>
 
             <Row>
               <View style={{ flex: 1 }}>
-                <RowLabel label="Default Font" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                <RowLabel label="Default font" />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={{ gap: 8 }}>
                   {FONTS.map(font => (
-                    <TouchableOpacity
+                    <NeuChip
                       key={font.value}
-                      style={[s.chip, settings.defaultFont === font.value && s.chipActive]}
+                      label={font.name}
+                      active={settings.defaultFont === font.value}
                       onPress={() => onUpdateSettings({ defaultFont: font.value })}
-                    >
-                      <Text style={[s.chipText, { fontFamily: font.value }, settings.defaultFont === font.value && s.chipTextActive]}>
-                        {font.name}
-                      </Text>
-                    </TouchableOpacity>
+                    />
                   ))}
                 </ScrollView>
               </View>
             </Row>
 
             <Row last>
-              <RowLabel label="Default Font Size" />
-              <View style={s.stepper}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() => onUpdateSettings({ defaultFontSize: Math.max(6, settings.defaultFontSize - 2) })}
-                >
-                  <Text style={s.stepBtnText}>−</Text>
-                </TouchableOpacity>
-                <Text style={[s.stepVal, { color: text }]}>{settings.defaultFontSize}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() => onUpdateSettings({ defaultFontSize: Math.min(36, settings.defaultFontSize + 2) })}
-                >
-                  <Text style={s.stepBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
+              <RowLabel label="Default font size" />
+              <NeuStepper
+                value={settings.defaultFontSize}
+                onDecrement={() => onUpdateSettings({ defaultFontSize: Math.max(6, settings.defaultFontSize - 2) })}
+                onIncrement={() => onUpdateSettings({ defaultFontSize: Math.min(36, settings.defaultFontSize + 2) })}
+              />
             </Row>
-          </View>
+          </SectionCard>
 
           {/* ── LAYOUT ── */}
-          <SectionHeader label="LAYOUT" />
-          <View style={[s.card, { backgroundColor: card }]}>
+          <SectionHeader label="Layout" />
+          <SectionCard>
             <Row last>
-              <RowLabel label="Grid Columns" />
-              <View style={s.segmented}>
+              <RowLabel label="Grid columns" />
+              <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3 }}>
                 {([2, 3] as (2 | 3)[]).map(n => (
-                  <TouchableOpacity
+                  <NeuPressable
                     key={n}
-                    style={[s.seg, settings.gridColumns === n && s.segActive]}
+                    isDark={isDark}
+                    radius={8}
+                    backgroundColor={settings.gridColumns === n ? p.base : undefined}
+                    style={{ paddingHorizontal: 14, paddingVertical: 6 }}
                     onPress={() => onUpdateSettings({ gridColumns: n })}
                   >
-                    <Text style={[s.segText, settings.gridColumns === n && s.segTextActive]}>{n}</Text>
-                  </TouchableOpacity>
+                    <Text style={{ fontSize: 12, fontWeight: settings.gridColumns === n ? '700' : '400', color: settings.gridColumns === n ? text : sub }}>{n}</Text>
+                  </NeuPressable>
                 ))}
-              </View>
+              </NeuView>
             </Row>
-          </View>
+          </SectionCard>
 
           {/* ── SORT ── */}
-          <SectionHeader label="SORT NOTES BY" />
-          <View style={[s.card, { backgroundColor: card }]}>
+          <SectionHeader label="Sort notes by" />
+          <SectionCard>
             {SORT_OPTIONS.map((opt, i) => (
-              <Row key={opt.value} last={i === SORT_OPTIONS.length - 1}>
-                <RowLabel label={opt.label} />
-                <View style={[s.radioOuter, settings.sortOrder === opt.value && s.radioOuterActive]}>
-                  {settings.sortOrder === opt.value && <View style={s.radioInner} />}
-                </View>
-                <TouchableOpacity
-                  style={StyleSheet.absoluteFill}
-                  onPress={() => onUpdateSettings({ sortOrder: opt.value })}
-                />
-              </Row>
+              <TouchableOpacity key={opt.value} onPress={() => onUpdateSettings({ sortOrder: opt.value })}>
+                <Row last={i === SORT_OPTIONS.length - 1}>
+                  <RowLabel label={opt.label} />
+                  <NeuRadio selected={settings.sortOrder === opt.value} isDark={isDark} />
+                </Row>
+              </TouchableOpacity>
             ))}
-          </View>
+          </SectionCard>
 
           {/* ── PREFERENCES ── */}
-          <SectionHeader label="PREFERENCES" />
-          <View style={[s.card, { backgroundColor: card }]}>
+          <SectionHeader label="Preferences" />
+          <SectionCard>
             <Row last>
-              <View style={{ flex: 1 }}>
-                <RowLabel label="Confirm style discards" />
-                <Text style={[s.comingSoonText, { color: sub }]}>
-                  Show confirmation when tapping ✕ in the styling bar
-                </Text>
-              </View>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => onUpdateSettings({ showDiscardConfirmation: !settings.showDiscardConfirmation })}
-                style={[s.toggle, settings.showDiscardConfirmation && s.toggleOn]}
-              >
-                <View style={[s.toggleThumb, settings.showDiscardConfirmation && s.toggleThumbOn]} />
-              </TouchableOpacity>
+              <RowLabel label="Confirm style discards" hint="Show confirmation when tapping ✕ in the styling bar" />
+              <NeuToggle
+                value={settings.showDiscardConfirmation}
+                onValueChange={(v) => onUpdateSettings({ showDiscardConfirmation: v })}
+                isDark={isDark}
+              />
             </Row>
-          </View>
+          </SectionCard>
 
           {/* ── STICKIE STYLES ── */}
-          <SectionHeader label="STICKIE STYLES" />
-          <View style={[s.card, { backgroundColor: card }]}> 
+          <SectionHeader label="Stickie styles" />
+          <SectionCard>
             <Row>
               <View style={{ flex: 1 }}>
-                <RowLabel label="Default Tab" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                <RowLabel label="Default tab" />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
                   {tabs.map(tab => (
-                    <TouchableOpacity
-                      key={tab.id}
-                      style={[s.tabChoice, settings.defaultTabId === tab.id && s.tabChoiceActive, { backgroundColor: tab.color }]}
-                      onPress={() => onUpdateSettings({ defaultTabId: tab.id })}
-                    >
-                      <Text style={[s.tabChoiceText, { color: tab.textColor || '#fff' }]} numberOfLines={1}>{tab.name}</Text>
+                    <TouchableOpacity key={tab.id} onPress={() => onUpdateSettings({ defaultTabId: tab.id })}>
+                      <NeuView
+                        isDark={isDark}
+                        radius={10}
+                        backgroundColor={tab.color}
+                        style={[
+                          { paddingHorizontal: 12, paddingVertical: 8, minWidth: 70, alignItems: 'center' },
+                          settings.defaultTabId === tab.id && { borderWidth: 2, borderColor: text },
+                        ]}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: tab.textColor || '#fff' }} numberOfLines={1}>{tab.name}</Text>
+                      </NeuView>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
             </Row>
+
             <Row>
               <View style={{ flex: 1 }}>
-                <RowLabel label="Style Preview" />
-                <View style={[s.stylePreviewCard, { backgroundColor: draftColor, borderColor: sep }]}>
-                  <Text style={[s.previewTitle, { color: draftTextColor, fontFamily: draftFont, fontWeight: draftTextStyle === 'bold' ? 'bold' : 'normal' }]}>Preview Note</Text>
-                  <Text style={[s.previewBody, previewStyle]}>{previewText}</Text>
-                </View>
+                <RowLabel label="Style preview" />
+                <NeuView isDark={isDark} radius={NEU_RADIUS.md} backgroundColor={draftColor} style={{ marginTop: 10, padding: 14, minHeight: 100 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: draftTextColor, fontFamily: draftFont, marginBottom: 6 }}>Preview Note</Text>
+                  <Text style={[{ fontSize: 12, lineHeight: 17 }, previewStyle]}>{previewText}</Text>
+                </NeuView>
               </View>
             </Row>
 
             <Row>
               <View style={{ flex: 1 }}>
-                <RowLabel label="Style Name" />
-                <TextInput
-                  value={draftStyleName}
-                  onChangeText={setDraftStyleName}
-                  placeholder="My favorite style"
-                  placeholderTextColor={sub}
-                  style={[s.nameInput, { color: text, borderColor: sep, backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7' }]}
-                />
+                <RowLabel label="Style name" />
+                <NeuView isDark={isDark} inset radius={10} style={{ marginTop: 8 }}>
+                  <TextInput
+                    value={draftStyleName}
+                    onChangeText={setDraftStyleName}
+                    placeholder="My favorite style"
+                    placeholderTextColor={sub}
+                    style={{ paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: text }}
+                  />
+                </NeuView>
               </View>
             </Row>
 
             <Row>
-              <TouchableOpacity
-                style={s.actionBtn}
-                onPress={() => {
-                  setShowStyleEditor(true);
-                  setShowStyleControls(true);
-                }}
-              >
-                <Text style={s.actionBtnText}>Add New StickieStyle</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.actionBtn} onPress={handleSaveStyle}>
-                <Text style={s.actionBtnText}>Save Style</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 10, flex: 1 }}>
+                <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} backgroundColor={NEU_ACCENT} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={() => setShowStyleEditor(true)}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Add New Style</Text>
+                </NeuPressable>
+                <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} backgroundColor={NEU_ACCENT} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={handleSaveStyle}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Save Style</Text>
+                </NeuPressable>
+              </View>
             </Row>
 
             {(settings.stickieStyles || []).length > 0 && (
-              <View>
+              <View style={{ gap: 8, marginTop: 8 }}>
                 {settings.stickieStyles?.map(style => (
-                  <View key={style.id} style={[s.savedStyleRow, { borderColor: sep }]}> 
+                  <View key={style.id} style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 10, borderTopWidth: 1, borderTopColor: `${p.darkShadow}30` }}>
                     <TouchableOpacity style={{ flex: 1 }} onPress={() => applyStyle(style)}>
-                      <Text style={[s.savedStyleName, { color: text }]}>{style.name}</Text>
-                      <Text style={[s.savedStyleMeta, { color: sub }]}> {style.color} · {style.textColor}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: text }}>{style.name}</Text>
+                      <Text style={{ fontSize: 10, color: sub, marginTop: 2 }}>{style.color} · {style.textColor}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[s.smallActionBtn, settings.defaultStyleId === style.id && s.smallActionBtnActive]}
+                    <NeuPressable
+                      isDark={isDark}
+                      radius={9}
+                      backgroundColor={settings.defaultStyleId === style.id ? NEU_ACCENT : undefined}
+                      style={{ paddingHorizontal: 12, paddingVertical: 8 }}
                       onPress={() => applyStyle(style)}
                     >
-                      <Text style={[s.smallActionBtnText, settings.defaultStyleId === style.id && { color: '#FFF' }]}>Use</Text>
-                    </TouchableOpacity>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: settings.defaultStyleId === style.id ? '#fff' : sub }}>Use</Text>
+                    </NeuPressable>
                   </View>
                 ))}
               </View>
             )}
-          </View>
+          </SectionCard>
 
           {/* ── DATA ── */}
-          <SectionHeader label="DATA" />
-          <View style={[s.card, { backgroundColor: card }]}>
+          <SectionHeader label="Data" />
+          <SectionCard>
             <Row>
-              <RowLabel label="Export Notes (JSON)" />
-              <TouchableOpacity style={s.actionBtn} onPress={handleExport}>
-                <Text style={s.actionBtnText}>Export</Text>
-              </TouchableOpacity>
+              <RowLabel label="Export notes (JSON)" />
+              <NeuPressable isDark={isDark} radius={9} backgroundColor={NEU_ACCENT} style={{ paddingHorizontal: 14, paddingVertical: 7 }} onPress={handleExport}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Export</Text>
+              </NeuPressable>
             </Row>
             <Row>
-              <RowLabel label="Import Notes (JSON)" />
-              <TouchableOpacity style={s.actionBtn} onPress={() => setShowImport(true)}>
-                <Text style={s.actionBtnText}>Import</Text>
-              </TouchableOpacity>
+              <RowLabel label="Import notes (JSON)" />
+              <NeuPressable isDark={isDark} radius={9} backgroundColor={NEU_ACCENT} style={{ paddingHorizontal: 14, paddingVertical: 7 }} onPress={() => setShowImport(true)}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Import</Text>
+              </NeuPressable>
             </Row>
             <Row last>
-              <View style={{ flex: 1 }}>
-                <RowLabel label="Import StickieStyle" />
-                <Text style={[s.comingSoonText, { color: sub }]}>Details coming soon</Text>
-              </View>
-              <TouchableOpacity style={[s.actionBtn, s.actionBtnDisabled]} disabled>
-                <Text style={[s.actionBtnText, { color: sub }]}>Import</Text>
-              </TouchableOpacity>
+              <RowLabel label="Import StickieStyle" hint="Details coming soon" />
+              <NeuView isDark={isDark} inset radius={9} style={{ paddingHorizontal: 14, paddingVertical: 7 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: sub }}>Import</Text>
+              </NeuView>
             </Row>
-          </View>
+          </SectionCard>
 
           {/* ── ACCOUNT ── */}
-          <SectionHeader label="ACCOUNT" />
-          <View style={[s.card, { backgroundColor: card }]}>
+          <SectionHeader label="Account" />
+          <SectionCard>
             <Row last>
-              <View style={{ flex: 1 }}>
-                <RowLabel label="Connect with Google" />
-                <Text style={[s.comingSoonText, { color: sub }]}>Coming soon</Text>
-              </View>
-              <TouchableOpacity style={[s.actionBtn, s.actionBtnDisabled]} disabled>
-                <Text style={[s.actionBtnText, { color: sub }]}>Connect</Text>
-              </TouchableOpacity>
+              <RowLabel label="Connect with Google" hint="Coming soon" />
+              <NeuView isDark={isDark} inset radius={9} style={{ paddingHorizontal: 14, paddingVertical: 7 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: sub }}>Connect</Text>
+              </NeuView>
             </Row>
-          </View>
+          </SectionCard>
 
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -543,8 +567,8 @@ const SettingsModal = ({
           onChecklistSortChange={setDraftChecklistSort}
           selectedChecklistTextMode={draftChecklistTextMode}
           onChecklistTextModeChange={setDraftChecklistTextMode}
-          onSave={() => { handleSaveStyle(); setShowStyleEditor(false); setShowStyleControls(false); }}
-          onCancel={() => { setShowStyleEditor(false); setShowStyleControls(false); }}
+          onSave={() => { handleSaveStyle(); setShowStyleEditor(false); }}
+          onCancel={() => setShowStyleEditor(false)}
           showDiscardConfirmation={settings.showDiscardConfirmation}
           onDisableDiscardConfirmation={() => onUpdateSettings({ showDiscardConfirmation: false })}
           previewMode={true}
@@ -553,30 +577,32 @@ const SettingsModal = ({
 
         {/* Import JSON overlay */}
         <Modal visible={showImport} animationType="slide" transparent onRequestClose={() => setShowImport(false)}>
-          <View style={s.importOverlay}>
-            <View style={[s.importCard, { backgroundColor: card }]}>
-              <View style={s.importHeader}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+            <View style={{ backgroundColor: p.base, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '70%' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <TouchableOpacity onPress={() => { setShowImport(false); setImportText(''); }}>
-                  <Text style={s.backBtn}>Cancel</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: NEU_DANGER }}>Cancel</Text>
                 </TouchableOpacity>
-                <Text style={[s.title, { color: text }]}>Import JSON</Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: text }}>Import JSON</Text>
                 <TouchableOpacity onPress={handleImportConfirm}>
-                  <Text style={s.importDone}>Import</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: NEU_ACCENT }}>Import</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={[s.importHint, { color: sub }]}>
+              <Text style={{ fontSize: 12, color: sub, marginBottom: 12, lineHeight: 17 }}>
                 Paste your Stickies backup JSON below. Notes will be merged with your existing data.
               </Text>
-              <TextInput
-                style={[s.importInput, { color: text, borderColor: sep }]}
-                multiline
-                value={importText}
-                onChangeText={setImportText}
-                placeholder='Paste JSON here…'
-                placeholderTextColor={sub}
-                textAlignVertical="top"
-                autoFocus
-              />
+              <NeuView isDark={isDark} inset radius={NEU_RADIUS.md} style={{ flex: 1 }}>
+                <TextInput
+                  style={{ flex: 1, color: text, padding: 12, fontSize: 12, fontFamily: 'monospace' }}
+                  multiline
+                  value={importText}
+                  onChangeText={setImportText}
+                  placeholder="Paste JSON here…"
+                  placeholderTextColor={sub}
+                  textAlignVertical="top"
+                  autoFocus
+                />
+              </NeuView>
             </View>
           </View>
         </Modal>
@@ -587,389 +613,3 @@ const SettingsModal = ({
 };
 
 export default SettingsModal;
-
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  backBtn: { fontSize: 16, color: '#007AFF', fontWeight: '500' },
-  title: { fontSize: 17, fontWeight: '600' },
-  scroll: { padding: 16 },
-  sectionHeader: {
-    fontSize: 12, fontWeight: '600', letterSpacing: 0.5,
-    textTransform: 'uppercase', marginBottom: 8, marginLeft: 4, marginTop: 16,
-  },
-  card: { borderRadius: 12, overflow: 'hidden', marginBottom: 4 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  rowLabel: { flex: 1, fontSize: 15 },
-  // Segmented control
-  segmented: { flexDirection: 'row', backgroundColor: '#E5E5EA', borderRadius: 8, padding: 2 },
-  seg: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6 },
-  segActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 2, elevation: 2 },
-  segText: { fontSize: 13, color: '#666' },
-  segTextActive: { color: '#000', fontWeight: '600' },
-  // Swatches
-  swatch: { width: 34, height: 34, borderRadius: 8, marginRight: 8, alignItems: 'center', justifyContent: 'center' },
-  swatchSel: { borderWidth: 2.5, borderColor: '#1C1C1E' },
-  swatchCheck: { fontSize: 14, fontWeight: '700', color: '#1C1C1E' },
-  // Font chips
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: '#F2F2F7', marginRight: 8 },
-  chipActive: { backgroundColor: '#007AFF' },
-  chipText: { fontSize: 13, color: '#1C1C1E' },
-  chipTextActive: { color: '#FFF', fontWeight: '600' },
-  // Stepper
-  stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2F2F7', borderRadius: 8, overflow: 'hidden' },
-  stepBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  stepBtnText: { fontSize: 20, color: '#007AFF' },
-  stepVal: { width: 36, textAlign: 'center', fontSize: 15, fontWeight: '600' },
-  // Radio
-  radioOuter: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: '#C7C7CC',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  radioOuterActive: { borderColor: '#007AFF' },
-  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#007AFF' },
-  // Action buttons
-  actionBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: '#007AFF', borderRadius: 8 },
-  actionBtnDisabled: { backgroundColor: '#F2F2F7' },
-  actionBtnText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
-  comingSoonText: { fontSize: 12, marginTop: 2 },
-  toggle: {
-    width: 51,
-    height: 31,
-    borderRadius: 16,
-    backgroundColor: '#E5E5EA',
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleOn: {
-    backgroundColor: '#34C759',
-  },
-  toggleThumb: {
-    width: 27,
-    height: 27,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-    alignSelf: 'flex-start',
-  },
-  toggleThumbOn: {
-    alignSelf: 'flex-end',
-  },
-  stylePreviewCard: {
-    marginTop: 10,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    minHeight: 110,
-  },
-  tabChoice: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginRight: 8,
-    minWidth: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabChoiceActive: {
-    borderWidth: 2,
-    borderColor: '#00000033',
-  },
-  tabChoiceText: { fontSize: 13, fontWeight: '600' },
-  previewTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  previewBody: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  nameInput: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-  savedStyleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    marginTop: 8,
-  },
-  savedStyleName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  savedStyleMeta: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  smallActionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#F2F2F7',
-  },
-  smallActionBtnActive: {
-    backgroundColor: '#007AFF',
-  },
-  smallActionBtnText: {
-    fontSize: 13,
-    color: '#1C1C1E',
-    fontWeight: '600',
-  },
-  styleEditorOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  styleEditorBackdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  styleEditorCard: {
-    width: '90%',
-    maxWidth: 360,
-    height: MODAL_HEIGHT,
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    overflow: 'hidden',
-  },
-  styleEditorHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  styleEditorHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  styleEditorTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  styleEditorAction: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  styleEditorCanvas: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  styleEditorNote: {
-    width: '100%',
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    minHeight: 220,
-  },
-  styleEditorNoteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  styleEditorNoteTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  styleEditorNoteBadge: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  styleEditorNoteText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  styleEditorBottomSheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: STYLING_BAR_HEIGHT,
-    backgroundColor: '#F2F2F7',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingHorizontal: 12,
-  },
-  styleEditorBottomSheetContent: {
-    paddingRight: 12,
-    paddingBottom: 8,
-  },
-  styleEditorSection: {
-    marginRight: 10,
-  },
-  styleEditorSectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#8E8E93',
-    marginBottom: 8,
-  },
-  styleEditorMiniBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    marginBottom: 8,
-    alignItems: 'center',
-  },
-  styleEditorMiniBtnActive: {
-    backgroundColor: '#007AFF',
-  },
-  styleEditorMiniBtnText: {
-    fontSize: 12,
-    color: '#3A3A3C',
-    fontWeight: '500',
-  },
-  styleEditorMiniBtnTextActive: {
-    color: '#FFFFFF',
-  },
-  styleEditorDivider: {
-    width: 1,
-    height: '100%',
-    backgroundColor: '#D1D1D6',
-    marginRight: 10,
-  },
-  styleEditorSvgToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  styleEditorMiniCheck: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: '#C7C7CC',
-    marginRight: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  styleEditorMiniCheckOn: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
-  },
-  styleEditorMiniCheckMark: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  styleEditorSvgToggleText: {
-    fontSize: 12,
-    color: '#1C1C1E',
-  },
-  styleEditorSwatchGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  styleEditorDisabled: {
-    opacity: 0.35,
-  },
-  styleEditorSwatch: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  styleEditorSwatchSelected: {
-    borderWidth: 2,
-    borderColor: '#1C1C1E',
-  },
-  styleEditorSwatchCheck: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  styleEditorFontChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    minWidth: 70,
-    marginBottom: 6,
-    alignItems: 'center',
-  },
-  styleEditorFontChipText: {
-    fontSize: 11,
-    color: '#1C1C1E',
-  },
-  styleEditorStepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  styleEditorStepBtn: {
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  styleEditorStepBtnText: {
-    fontSize: 16,
-    color: '#007AFF',
-  },
-  styleEditorStepVal: {
-    width: 24,
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  styleEditorStyleChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    minWidth: 56,
-    marginBottom: 6,
-    alignItems: 'center',
-  },
-  styleEditorStyleChipText: {
-    fontSize: 11,
-    color: '#1C1C1E',
-  },
-  // Import modal
-  importOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  importCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '70%' },
-  importHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12,
-  },
-  importDone: { fontSize: 16, color: '#007AFF', fontWeight: '600' },
-  importHint: { fontSize: 13, marginBottom: 12, lineHeight: 18 },
-  importInput: {
-    flex: 1, borderWidth: 1, borderRadius: 10, padding: 12,
-    fontSize: 13, fontFamily: 'monospace',
-  },
-});

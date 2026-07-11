@@ -1,7 +1,10 @@
 import { Platform } from 'react-native';
+import { NEU_NOTE_COLORS, NEU_ACCENT } from './theme/neumorphic';
 
-export const COLORS = ['#FFE5B4', '#FFB3BA', '#BAFFC9', '#BAE1FF', '#FFFFBA', '#E5B4FF'];
-export const TEXT_COLORS = ['#333333', '#000000', '#FFFFFF', '#4A4A4A', '#D32F2F', '#1976D2', '#2E7D32', '#7B1FA2'];
+// Bright, saturated note colors — designed to sit inside a NeuView so the
+// soft dual-shadow still reads even though the fill itself is colorful.
+export const COLORS = NEU_NOTE_COLORS;
+export const TEXT_COLORS = ['#3A3F4B', '#000000', '#FFFFFF', '#4A4A4A', '#D32F2F', '#1976D2', '#2E7D32', '#7B1FA2'];
 export const FONTS = Platform.OS === 'ios'
   ? [
       { name: 'System', value: 'System' },
@@ -23,18 +26,12 @@ export const FONTS = Platform.OS === 'ios'
 // Cycled through automatically whenever a new (non-built-in) tab is created,
 // so every pill in the vertical tab rail gets a distinct color.
 export const TAB_COLOR_PALETTE = [
-  '#B65B5E',
-  '#9B59C9',
-  '#E2A716',
-  '#3FA796',
+  ...NEU_NOTE_COLORS,
   '#4677C9',
   '#C2185B',
-  '#7E57C2',
-  '#558B2F',
-  '#EF6C00',
 ];
 
 // Fixed colors for the built-in tabs that always exist.
-export const ALL_TAB_COLOR = '#5B5B5B';
-export const GENERAL_TAB_COLOR = '#4677C9';
-export const TRASH_TAB_COLOR = '#8B3A3A';
+export const ALL_TAB_COLOR = '#8A90A0';
+export const GENERAL_TAB_COLOR = NEU_ACCENT;
+export const TRASH_TAB_COLOR = '#B8BEC9';
