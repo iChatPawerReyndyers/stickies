@@ -467,9 +467,12 @@ const SettingsModal = ({
             </Row>
 
             <Row>
+              {/* Secondary (raised, base-colored) vs Primary (accent) — mirrors the
+                  Cancel/Save pairing in the neumorphic component gallery rather than
+                  showing two identical accent buttons side by side. */}
               <View style={{ flexDirection: 'row', gap: 10, flex: 1 }}>
-                <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} backgroundColor={NEU_ACCENT} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={() => setShowStyleEditor(true)}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Add New Style</Text>
+                <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={() => setShowStyleEditor(true)}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: text }}>Add New Style</Text>
                 </NeuPressable>
                 <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} backgroundColor={NEU_ACCENT} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={handleSaveStyle}>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Save Style</Text>

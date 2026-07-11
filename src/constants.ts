@@ -34,4 +34,5 @@ export const TAB_COLOR_PALETTE = [
 // Fixed colors for the built-in tabs that always exist.
 export const ALL_TAB_COLOR = '#8A90A0';
 export const GENERAL_TAB_COLOR = NEU_ACCENT;
+export const ARCHIVED_TAB_COLOR = '#6E8FAD';
 export const TRASH_TAB_COLOR = '#B8BEC9';

@@ -17,6 +17,9 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, ChecklistSort, ChecklistTextMode } from '../types';
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { FRAME_COMPONENTS } from '../frames';
+import SwipeToAction from '../components/SwipeToAction';
+import { NeuView, NeuPressable } from '../components/Neumorphic';
+import { NEU_ACCENT, NEU_DANGER, NEU_RADIUS, getNeuPalette } from '../theme/neumorphic';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
@@ -25,84 +28,72 @@ const MODAL_WIDTH = 320;
 const CARD_HORIZONTAL_PADDING = 24;
 const CHECKBOX_SIZE = 26;
 const ROW_GAP = 14;
-const BRUSH_HEIGHT = 24;
+const UNDERLINE_HEIGHT = 3;
 const AVAILABLE_TEXT_ROW_WIDTH =
   MODAL_WIDTH - CARD_HORIZONTAL_PADDING * 2 - CHECKBOX_SIZE - ROW_GAP;
 const MINI_SWATCH = 26;
 const MINI_GAP = 5;
 
-const CHECKBOX_STROKE_COLOR = '#1C1C1E';
-const CHECKBOX_CHECKED_FILL = '#1C1C1E';
-const BRUSH_STROKE_COLOR = '#E7C4B2';
+// Width variety per row so the underline accents don't look mechanically
+// identical — same idea as the old brush-stroke variants, just applied to
+// a neumorphic inset groove instead of a painted highlighter mark.
+const UNDERLINE_WIDTH_RATIOS = [0.95, 0.72, 0.93, 0.88, 0.65];
 
 // ── SVG Checkbox ───────────────────────────────────────────────────────────────
+// Unchecked = neutral outline in the palette's dark-shadow tone (reads as a
+// carved-in placeholder); checked = solid accent fill with a white check,
+// matching the rest of the app's raised/accent convention.
 
-const CheckboxIcon: React.FC<{ checked: boolean; size?: number }> = ({ checked, size = CHECKBOX_SIZE }) => (
-  <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-    <Rect
-      x={size * 0.08} y={size * 0.08}
-      width={size * 0.84} height={size * 0.84}
-      rx={size * 0.26} ry={size * 0.26}
-      stroke={CHECKBOX_STROKE_COLOR} strokeWidth={size * 0.1}
-      fill={checked ? CHECKBOX_CHECKED_FILL : 'transparent'}
-    />
-    {checked && (
-      <Path
-        d={`M${size * 0.27} ${size * 0.52} L${size * 0.42} ${size * 0.67} L${size * 0.75} ${size * 0.32}`}
-        stroke="#FFFFFF" strokeWidth={size * 0.09}
-        strokeLinecap="round" strokeLinejoin="round" fill="none"
-      />
-    )}
-  </Svg>
-);
-
-// ── Brush stroke ───────────────────────────────────────────────────────────────
-
-function smoothClosedPath(pts: { x: number; y: number }[]): string {
-  if (pts.length < 2) return '';
-  let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} `;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] || p2;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d += `C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)} `;
-  }
-  return `${d}Z`;
-}
-
-function generateBrushStrokePath(seed: number, w: number, h: number): string {
-  const top: { x: number; y: number }[] = [];
-  const bot: { x: number; y: number }[] = [];
-  for (let i = 0; i <= 10; i++) {
-    const t = i / 10;
-    const x = t * w;
-    const taper = Math.pow(Math.sin(t * Math.PI), 0.5);
-    const wobble = Math.sin(t * 6 + seed) * (h * 0.12) + Math.sin(t * 13 + seed * 2.1) * (h * 0.05);
-    const half = h * 0.42 * (0.55 + 0.45 * taper);
-    top.push({ x, y: h / 2 - half + wobble });
-    bot.push({ x, y: h / 2 + half + wobble });
-  }
-  return smoothClosedPath([...top, ...bot.reverse()]);
-}
-
-const BRUSH_VARIANTS = [0.5, 2.0, 3.3, 4.7, 6.1].map((seed, i) => {
-  const w = Math.round(AVAILABLE_TEXT_ROW_WIDTH * [0.95, 0.72, 0.93, 0.88, 0.65][i]);
-  return { w, h: BRUSH_HEIGHT, path: generateBrushStrokePath(seed, w, BRUSH_HEIGHT) };
-});
-
-const BrushStroke: React.FC<{ index: number }> = ({ index }) => {
-  const v = BRUSH_VARIANTS[index % BRUSH_VARIANTS.length];
+const CheckboxIcon: React.FC<{ checked: boolean; size?: number; isDark?: boolean }> = ({ checked, size = CHECKBOX_SIZE, isDark = false }) => {
+  const p = getNeuPalette(isDark);
+  const strokeColor = checked ? NEU_ACCENT : p.darkShadow;
   return (
-    <View style={clStyles.brushWrap} pointerEvents="none">
-      <Svg width={v.w} height={v.h} viewBox={`0 0 ${v.w} ${v.h}`}>
-        <Path d={v.path} fill={BRUSH_STROKE_COLOR} opacity={0.65} />
-      </Svg>
-    </View>
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Rect
+        x={size * 0.08} y={size * 0.08}
+        width={size * 0.84} height={size * 0.84}
+        rx={size * 0.26} ry={size * 0.26}
+        stroke={strokeColor} strokeWidth={size * 0.1}
+        fill={checked ? NEU_ACCENT : 'transparent'}
+      />
+      {checked && (
+        <Path
+          d={`M${size * 0.27} ${size * 0.52} L${size * 0.42} ${size * 0.67} L${size * 0.75} ${size * 0.32}`}
+          stroke="#FFFFFF" strokeWidth={size * 0.09}
+          strokeLinecap="round" strokeLinejoin="round" fill="none"
+        />
+      )}
+    </Svg>
+  );
+};
+
+// ── Underline accent ────────────────────────────────────────────────────────────
+// Replaces the old hand-drawn "brush stroke" highlighter with a thin
+// neumorphic inset groove sitting under single-line checklist text — same
+// carved-in language as text inputs and toggle tracks elsewhere in the app.
+
+const UnderlineAccent: React.FC<{ index: number; isDark?: boolean }> = ({ index, isDark = false }) => {
+  const p = getNeuPalette(isDark);
+  const width = Math.round(AVAILABLE_TEXT_ROW_WIDTH * UNDERLINE_WIDTH_RATIOS[index % UNDERLINE_WIDTH_RATIOS.length]);
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        bottom: 2,
+        width,
+        height: UNDERLINE_HEIGHT,
+        borderRadius: UNDERLINE_HEIGHT / 2,
+        backgroundColor: p.insetBase,
+        borderWidth: 1,
+        borderTopColor: p.darkShadow,
+        borderLeftColor: p.darkShadow,
+        borderBottomColor: p.lightShadow,
+        borderRightColor: p.lightShadow,
+        opacity: 0.7,
+      }}
+    />
   );
 };
 
@@ -148,6 +139,11 @@ type NoteModalProps = {
   // strips all editing affordances — no styling ('v') toggle, no footer
   // buttons. Closed only via the ✕ in the top-right corner (calls onCancel).
   viewOnly?: boolean;
+  // Swipe-to-action — only wired up when the caller actually has a real,
+  // already-saved note to act on (undefined disables swipe silently).
+  onSwipeDelete?: () => void;
+  onSwipeArchive?: () => void;
+  isDark?: boolean;
 };
 
 // ── Snapshot type ──────────────────────────────────────────────────────────────
@@ -191,6 +187,9 @@ const NoteModal = ({
   previewMode = false,
   initialShowStyling = false,
   viewOnly = false,
+  onSwipeDelete,
+  onSwipeArchive,
+  isDark = false,
 }: NoteModalProps) => {
   const [showStyling, setShowStyling] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -200,6 +199,10 @@ const NoteModal = ({
   // is focused we skip live re-sorting so the row doesn't jump under the user's
   // finger/cursor as they type (e.g. under alphabetical sort).
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  // Tracked so swipe-to-delete/archive only engages once the keyboard is
+  // dismissed — otherwise a horizontal drag on the text input would fight
+  // with cursor placement / text selection.
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   const inputRefs = useRef<{ [key: string]: TextInput | null }>({});
   const scrollRef = useRef<ScrollView | null>(null);
@@ -208,9 +211,18 @@ const NoteModal = ({
   // a second consecutive Backspace on a still-empty item deletes it.
   const backspacePendingRef = useRef<{ [id: string]: boolean }>({});
 
+  const p = getNeuPalette(isDark);
+  const text = p.textPrimary;
+  const sub = p.textSecondary;
+
   // Read-only note content is presented the same way as previewMode's
   // (non-editable) rendering — this just extends that same rendering path.
   const isReadOnlyContent = previewMode || viewOnly;
+
+  // Swipe is enabled in View Only always, and in the normal editor only once
+  // the styling bar is closed and the keyboard is down — i.e. exactly the
+  // "just looking at the note" state.
+  const swipeEnabled = !previewMode && (viewOnly || (!showStyling && !isKeyboardVisible));
 
   const items: ChecklistItem[] = Array.isArray(content) ? (content as ChecklistItem[]) : [];
 
@@ -235,6 +247,16 @@ const NoteModal = ({
   useEffect(() => {
     if (showStyling) Keyboard.dismiss();
   }, [showStyling]);
+
+  // Track keyboard visibility for the swipe-enabled gate above.
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Convert content when type changes
   useEffect(() => {
@@ -395,13 +417,11 @@ const NoteModal = ({
           style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: showStyling ? STYLING_BAR_HEIGHT : 0 }}
           pointerEvents="box-none"
         >
-          <View
-            style={[
-              s.card,
-              { backgroundColor: FrameComponent ? 'transparent' : selectedColor },
-              { height: MODAL_HEIGHT },
-            ]}
-            onStartShouldSetResponder={() => true}
+          <NeuView
+            isDark={isDark}
+            radius={NEU_RADIUS.xl}
+            backgroundColor={FrameComponent ? 'transparent' : selectedColor}
+            style={{ width: MODAL_WIDTH, height: MODAL_HEIGHT, paddingHorizontal: CARD_HORIZONTAL_PADDING, paddingTop: 24, paddingBottom: 24, overflow: 'hidden' }}
           >
             {/* SVG frame background */}
             {FrameComponent && (
@@ -414,15 +434,15 @@ const NoteModal = ({
             )}
 
             {/* Header */}
-            <View style={s.topToolbar}>
-              <Text style={s.headerLabel} numberOfLines={1}>{tabName}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12 }}>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: sub, flex: 1 }} numberOfLines={1}>{tabName}</Text>
               {viewOnly ? (
                 <TouchableOpacity
                   onPress={onCancel}
                   activeOpacity={0.7}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Text style={s.closeIconX}>✕</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: text }}>✕</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -430,493 +450,530 @@ const NoteModal = ({
                   activeOpacity={0.7}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Text style={[s.arrowIconV, showStyling && { color: '#007AFF' }]}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: showStyling ? NEU_ACCENT : text, transform: [{ scaleX: 1.3 }] }}>
                     {showStyling ? '✓' : 'v'}
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            <View style={s.dividerLine} />
+            <View style={{ height: 1, backgroundColor: p.darkShadow, opacity: 0.25 }} />
 
             {/* Content area — locked from touches while the styling bar is open so
-                tapping a text field underneath can't bring the keyboard back up */}
-            <View style={{ flex: 1 }} pointerEvents={showStyling ? 'none' : 'auto'}>
-              {contentType === 'checklist' ? (
-              <ScrollView
-                ref={scrollRef}
-                style={{ flex: 1 }}
-                contentContainerStyle={{ paddingTop: 10 + selectedMargins.top, paddingBottom: 10 + selectedMargins.bottom, paddingLeft: selectedMargins.left, paddingRight: selectedMargins.right }}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator
-              >
-                {displayedChecklistItems.map((item, index) => {
-                  if (isReadOnlyContent) {
+                tapping a text field underneath can't bring the keyboard back up.
+                Wrapped in SwipeToAction so swiping left/right here trashes or
+                archives the note (see swipeEnabled gate above). */}
+            <SwipeToAction enabled={swipeEnabled} onSwipeLeft={onSwipeDelete} onSwipeRight={onSwipeArchive}>
+              <View style={{ flex: 1 }} pointerEvents={showStyling ? 'none' : 'auto'}>
+                {contentType === 'checklist' ? (
+                <ScrollView
+                  ref={scrollRef}
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{ paddingTop: 10 + selectedMargins.top, paddingBottom: 10 + selectedMargins.bottom, paddingLeft: selectedMargins.left, paddingRight: selectedMargins.right }}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                >
+                  {displayedChecklistItems.map((item, index) => {
+                    if (isReadOnlyContent) {
+                      if (index === 0) {
+                        return (
+                          <View key={item.id} style={clStyles.titleRow}>
+                            <Text style={[clStyles.titleInput, getTextStyle(), { fontSize: Math.max(selectedFontSize + 4, 18) }]}>{item.text}</Text>
+                          </View>
+                        );
+                      }
+                      return (
+                        <View key={item.id} style={[clStyles.row, { marginTop: selectedItemSpacing.top, marginBottom: selectedItemSpacing.bottom }]}>
+                          <View style={clStyles.checkboxTouch}>
+                            <CheckboxIcon checked={item.completed} isDark={isDark} />
+                          </View>
+                          <View style={clStyles.inputWrap}>
+                            {selectedChecklistTextMode === 'single' && <UnderlineAccent index={index} isDark={isDark} />}
+                            <Text style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}>{item.text}</Text>
+                          </View>
+                        </View>
+                      );
+                    }
                     if (index === 0) {
                       return (
                         <View key={item.id} style={clStyles.titleRow}>
-                          <Text style={[clStyles.titleInput, getTextStyle(), { fontSize: Math.max(selectedFontSize + 4, 18) }]}>{item.text}</Text>
+                          <TextInput
+                            ref={el => { inputRefs.current[item.id] = el; }}
+                            style={[clStyles.titleInput, getTextStyle(), { fontSize: Math.max(selectedFontSize + 4, 18) }]}
+                            placeholder="Title..."
+                            placeholderTextColor="#8E8E93"
+                            value={item.text}
+                            onChangeText={text => updateItem(item.id, text)}
+                            blurOnSubmit={false}
+                            onSubmitEditing={() => addItemAfter(item.id)}
+                            underlineColorAndroid="transparent"
+                          />
                         </View>
                       );
                     }
                     return (
                       <View key={item.id} style={[clStyles.row, { marginTop: selectedItemSpacing.top, marginBottom: selectedItemSpacing.bottom }]}>
-                        <View style={clStyles.checkboxTouch}>
-                          <CheckboxIcon checked={item.completed} />
-                        </View>
+                        <TouchableOpacity
+                          style={clStyles.checkboxTouch}
+                          onPress={() => toggleItem(item.id)}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <CheckboxIcon checked={item.completed} isDark={isDark} />
+                        </TouchableOpacity>
                         <View style={clStyles.inputWrap}>
-                          {selectedChecklistTextMode === 'single' && <BrushStroke index={index} />}
-                          <Text style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}>{item.text}</Text>
+                          {selectedChecklistTextMode === 'single' && <UnderlineAccent index={index} isDark={isDark} />}
+                          <TextInput
+                            ref={el => { inputRefs.current[item.id] = el; }}
+                            style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}
+                            placeholder="List item..."
+                            placeholderTextColor="transparent"
+                            value={item.text}
+                            onChangeText={text => {
+                              // Any real edit cancels a pending "delete on next backspace" state.
+                              backspacePendingRef.current[item.id] = false;
+                              // Some platforms don't emit onKeyPress for Enter in multiline inputs.
+                              // Detect newline characters in the text as a fallback and create a new item.
+                              if (selectedChecklistTextMode === 'wrap' && text.includes('\n')) {
+                                const sanitized = text.replace(/\n+/g, '');
+                                updateItem(item.id, sanitized);
+                                // Create the next item and focus it
+                                addItemAfter(item.id);
+                                enterPressedRef.current = false;
+                                return;
+                              }
+                              if (enterPressedRef.current) {
+                                // Remove any trailing newlines inserted by the Enter key
+                                const sanitized = text.replace(/\n+$/, '');
+                                updateItem(item.id, sanitized);
+                                enterPressedRef.current = false;
+                              } else {
+                                updateItem(item.id, text);
+                              }
+                            }}
+                            multiline={selectedChecklistTextMode === 'wrap'}
+                            blurOnSubmit={false}
+                            onFocus={() => setEditingItemId(item.id)}
+                            onBlur={() => setEditingItemId(prev => (prev === item.id ? null : prev))}
+                            onSubmitEditing={() => addItemAfter(item.id)}
+                            onKeyPress={({ nativeEvent }) => {
+                              if (nativeEvent.key === 'Enter' && selectedChecklistTextMode === 'wrap') {
+                                enterPressedRef.current = true;
+                                addItemAfter(item.id);
+                                return;
+                              }
+                              // Second consecutive Backspace while the item is empty deletes it.
+                              if (nativeEvent.key === 'Backspace' && !item.text) {
+                                if (backspacePendingRef.current[item.id]) {
+                                  deleteItem(item.id);
+                                } else {
+                                  backspacePendingRef.current[item.id] = true;
+                                }
+                              }
+                            }}
+                            underlineColorAndroid="transparent"
+                          />
                         </View>
                       </View>
                     );
-                  }
-                  if (index === 0) {
-                    return (
-                      <View key={item.id} style={clStyles.titleRow}>
-                        <TextInput
-                          ref={el => { inputRefs.current[item.id] = el; }}
-                          style={[clStyles.titleInput, getTextStyle(), { fontSize: Math.max(selectedFontSize + 4, 18) }]}
-                          placeholder="Title..."
-                          placeholderTextColor="#8E8E93"
-                          value={item.text}
-                          onChangeText={text => updateItem(item.id, text)}
-                          blurOnSubmit={false}
-                          onSubmitEditing={() => addItemAfter(item.id)}
-                          underlineColorAndroid="transparent"
-                        />
-                      </View>
-                    );
-                  }
-                  return (
-                    <View key={item.id} style={[clStyles.row, { marginTop: selectedItemSpacing.top, marginBottom: selectedItemSpacing.bottom }]}>
-                      <TouchableOpacity
-                        style={clStyles.checkboxTouch}
-                        onPress={() => toggleItem(item.id)}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <CheckboxIcon checked={item.completed} />
-                      </TouchableOpacity>
-                      <View style={clStyles.inputWrap}>
-                        {selectedChecklistTextMode === 'single' && <BrushStroke index={index} />}
-                        <TextInput
-                          ref={el => { inputRefs.current[item.id] = el; }}
-                          style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}
-                          placeholder="List item..."
-                          placeholderTextColor="transparent"
-                          value={item.text}
-                          onChangeText={text => {
-                            // Any real edit cancels a pending "delete on next backspace" state.
-                            backspacePendingRef.current[item.id] = false;
-                            // Some platforms don't emit onKeyPress for Enter in multiline inputs.
-                            // Detect newline characters in the text as a fallback and create a new item.
-                            if (selectedChecklistTextMode === 'wrap' && text.includes('\n')) {
-                              const sanitized = text.replace(/\n+/g, '');
-                              updateItem(item.id, sanitized);
-                              // Create the next item and focus it
-                              addItemAfter(item.id);
-                              enterPressedRef.current = false;
-                              return;
-                            }
-                            if (enterPressedRef.current) {
-                              // Remove any trailing newlines inserted by the Enter key
-                              const sanitized = text.replace(/\n+$/, '');
-                              updateItem(item.id, sanitized);
-                              enterPressedRef.current = false;
-                            } else {
-                              updateItem(item.id, text);
-                            }
-                          }}
-                          multiline={selectedChecklistTextMode === 'wrap'}
-                          blurOnSubmit={false}
-                          onFocus={() => setEditingItemId(item.id)}
-                          onBlur={() => setEditingItemId(prev => (prev === item.id ? null : prev))}
-                          onSubmitEditing={() => addItemAfter(item.id)}
-                          onKeyPress={({ nativeEvent }) => {
-                            if (nativeEvent.key === 'Enter' && selectedChecklistTextMode === 'wrap') {
-                              enterPressedRef.current = true;
-                              addItemAfter(item.id);
-                              return;
-                            }
-                            // Second consecutive Backspace while the item is empty deletes it.
-                            if (nativeEvent.key === 'Backspace' && !item.text) {
-                              if (backspacePendingRef.current[item.id]) {
-                                deleteItem(item.id);
-                              } else {
-                                backspacePendingRef.current[item.id] = true;
-                              }
-                            }
-                          }}
-                          underlineColorAndroid="transparent"
-                        />
-                      </View>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            ) : (
-              <View style={{ flex: 1 }}>
-                {!isReadOnlyContent ? (
-                  <TextInput
-                    style={[s.textInput, getTextStyle(), {
-                      paddingTop: 12 + selectedMargins.top,
-                      paddingBottom: 12 + selectedMargins.bottom,
-                      paddingLeft: selectedMargins.left,
-                      paddingRight: selectedMargins.right,
-                    }]}
-                    placeholder="Start typing your note..."
-                    placeholderTextColor="#AEAEB2"
-                    multiline
-                    value={typeof content === 'string' ? content : ''}
-                    onChangeText={onContentChange}
-                    textAlignVertical="top"
-                    autoFocus={!isReadOnlyContent}
-                    underlineColorAndroid="transparent"
-                  />
-                ) : (
-                  <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 12 + selectedMargins.top, paddingBottom: 12 + selectedMargins.bottom, paddingLeft: selectedMargins.left, paddingRight: selectedMargins.right }}>
-                    <Text style={[getTextStyle(), { color: selectedTextColor }]}>{typeof content === 'string' ? content : ''}</Text>
-                  </ScrollView>
-                )}
+                  })}
+                </ScrollView>
+              ) : (
+                <View style={{ flex: 1 }}>
+                  {!isReadOnlyContent ? (
+                    <TextInput
+                      style={[s.textInput, getTextStyle(), {
+                        paddingTop: 12 + selectedMargins.top,
+                        paddingBottom: 12 + selectedMargins.bottom,
+                        paddingLeft: selectedMargins.left,
+                        paddingRight: selectedMargins.right,
+                      }]}
+                      placeholder="Start typing your note..."
+                      placeholderTextColor="#AEAEB2"
+                      multiline
+                      value={typeof content === 'string' ? content : ''}
+                      onChangeText={onContentChange}
+                      textAlignVertical="top"
+                      autoFocus={!isReadOnlyContent}
+                      underlineColorAndroid="transparent"
+                    />
+                  ) : (
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 12 + selectedMargins.top, paddingBottom: 12 + selectedMargins.bottom, paddingLeft: selectedMargins.left, paddingRight: selectedMargins.right }}>
+                      <Text style={[getTextStyle(), { color: selectedTextColor }]}>{typeof content === 'string' ? content : ''}</Text>
+                    </ScrollView>
+                  )}
+                </View>
+              )}
               </View>
-            )}
-            </View>
+            </SwipeToAction>
 
             {/* Footer — hidden entirely in viewOnly mode; closing happens only via the ✕ */}
             {!viewOnly && (
               <>
-                <View style={s.dividerLine} />
-                {previewMode ? (
-                  <View style={s.actionRow}>
-                    <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
-                      <Text style={s.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[s.btn, s.btnConfirm]} onPress={onSave} activeOpacity={0.8}>
-                      <Text style={s.confirmText}>Save</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <View style={s.actionRow}>
-                    <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
-                      <Text style={s.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[s.btn, s.btnConfirm]} onPress={onSave} activeOpacity={0.8}>
-                      <Text style={s.confirmText}>Confirm</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                <View style={{ height: 1, backgroundColor: p.darkShadow, opacity: 0.25 }} />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 10 }}>
+                  <NeuPressable isDark={isDark} radius={NEU_RADIUS.md} style={{ flex: 1, height: 44, alignItems: 'center', justifyContent: 'center' }} onPress={onCancel}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: NEU_DANGER }}>Cancel</Text>
+                  </NeuPressable>
+                  <NeuPressable isDark={isDark} radius={NEU_RADIUS.md} backgroundColor={NEU_ACCENT} style={{ flex: 1, height: 44, alignItems: 'center', justifyContent: 'center' }} onPress={onSave}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>{previewMode ? 'Save' : 'Confirm'}</Text>
+                  </NeuPressable>
+                </View>
               </>
             )}
 
-          </View>
+          </NeuView>
         </View>
 
         {/* Styling bar — bottom sheet, sibling to the card, inside the same Modal */}
         {showStyling && (
           <>
-            <View style={barStyles.bottomSheet}>
+            <NeuView isDark={isDark} radius={NEU_RADIUS.lg} style={{ position: 'absolute', bottom: 24, left: 24, right: 24, height: STYLING_BAR_HEIGHT, overflow: 'hidden' }}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={barStyles.scrollContent}
+                contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 12, alignItems: 'flex-start' }}
                 keyboardShouldPersistTaps="handled"
               >
               {/* ── Content Type ── */}
               <View style={[barStyles.section, { width: 110 }]}>
-                <Text style={barStyles.sLabel}>Type</Text>
+                <Text style={[barStyles.sLabel, { color: sub }]}>Type</Text>
                 {(['text', 'checklist'] as ContentType[]).map(type => (
-                  <TouchableOpacity
+                  <NeuPressable
                     key={type}
-                    style={[barStyles.miniBtn, contentType === type && barStyles.miniBtnActive]}
+                    isDark={isDark}
+                    radius={8}
+                    backgroundColor={contentType === type ? NEU_ACCENT : undefined}
+                    style={{ paddingHorizontal: 10, paddingVertical: 8, marginBottom: 5, alignItems: 'center' }}
                     onPress={() => onContentTypeChange(type)}
                   >
-                    <Text style={[barStyles.miniBtnText, contentType === type && barStyles.miniBtnTextActive]}>
+                    <Text style={{ fontSize: 14, fontWeight: '500', color: contentType === type ? '#FFFFFF' : sub }}>
                       {type === 'text' ? 'Text' : 'Checklist'}
                     </Text>
-                  </TouchableOpacity>
+                  </NeuPressable>
                 ))}
               </View>
 
-              <View style={barStyles.vDivider} />
+              <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
 
               {/* ── Background ── */}
               <View style={[barStyles.section, { width: 138 }]}>
-                <Text style={barStyles.sLabel}>Background</Text>
+                <Text style={[barStyles.sLabel, { color: sub }]}>Background</Text>
                 <TouchableOpacity style={barStyles.svgToggle} onPress={() => onUseSvgBackgroundChange(!useSvgBackground)}>
-                  <View style={[barStyles.miniCheck, useSvgBackground && barStyles.miniCheckOn]}>
-                    {useSvgBackground && <Text style={barStyles.miniCheckMark}>✓</Text>}
-                  </View>
-                  <Text style={barStyles.svgToggleText}>SVG Frame</Text>
+                  <NeuView
+                    isDark={isDark}
+                    inset={!useSvgBackground}
+                    radius={4}
+                    backgroundColor={useSvgBackground ? NEU_ACCENT : undefined}
+                    style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center', marginRight: 5 }}
+                  >
+                    {useSvgBackground && <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFFFFF' }}>✓</Text>}
+                  </NeuView>
+                  <Text style={{ fontSize: 14, color: text, fontWeight: '500' }}>SVG Frame</Text>
                 </TouchableOpacity>
                 <View
                   style={[barStyles.swatchGrid, useSvgBackground && barStyles.disabled]}
                   pointerEvents={useSvgBackground ? 'none' : 'auto'}
                 >
                   {COLORS.map(color => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[barStyles.swatch, { backgroundColor: color }, selectedColor === color && barStyles.swatchSel]}
-                      onPress={() => onColorChange(color)}
-                    >
-                      {selectedColor === color && <Text style={barStyles.swatchCheck}>✓</Text>}
+                    <TouchableOpacity key={color} onPress={() => onColorChange(color)}>
+                      <NeuView
+                        isDark={isDark}
+                        radius={6}
+                        backgroundColor={color}
+                        style={[
+                          { width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' },
+                          selectedColor === color && { borderWidth: 2, borderColor: text },
+                        ]}
+                      >
+                        {selectedColor === color && <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>✓</Text>}
+                      </NeuView>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
 
-              <View style={barStyles.vDivider} />
+              <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
 
               {/* ── Font Color ── */}
               <View style={[barStyles.section, { width: 148 }]}>
-                <Text style={barStyles.sLabel}>Font Color</Text>
+                <Text style={[barStyles.sLabel, { color: sub }]}>Font Color</Text>
                 <View style={barStyles.swatchGrid}>
                   {TEXT_COLORS.map(color => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[barStyles.swatch, { backgroundColor: color }, selectedTextColor === color && barStyles.swatchSel]}
-                      onPress={() => onTextColorChange(color)}
-                    >
-                      {selectedTextColor === color && <Text style={barStyles.swatchCheck}>✓</Text>}
+                    <TouchableOpacity key={color} onPress={() => onTextColorChange(color)}>
+                      <NeuView
+                        isDark={isDark}
+                        radius={6}
+                        backgroundColor={color}
+                        style={[
+                          { width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' },
+                          selectedTextColor === color && { borderWidth: 2, borderColor: NEU_ACCENT },
+                        ]}
+                      >
+                        {selectedTextColor === color && <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>✓</Text>}
+                      </NeuView>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
 
-              <View style={barStyles.vDivider} />
+              <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
 
-              {/* ── Font ── */}
+              {/* ── Font ── kept horizontally scrollable */}
               <View style={[barStyles.section, { width: 156 }]}>
-                <Text style={barStyles.sLabel}>Font</Text>
+                <Text style={[barStyles.sLabel, { color: sub }]}>Font</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP }}>
                   {FONTS.map(font => (
-                    <TouchableOpacity
+                    <NeuPressable
                       key={font.value}
-                      style={[barStyles.fontChip, selectedFont === font.value && barStyles.miniBtnActive]}
+                      isDark={isDark}
+                      radius={7}
+                      backgroundColor={selectedFont === font.value ? NEU_ACCENT : undefined}
+                      style={{ paddingHorizontal: 6, paddingVertical: 5, width: 70, alignItems: 'center' }}
                       onPress={() => onFontChange(font.value)}
                     >
-                      <Text style={[barStyles.fontChipText, { fontFamily: font.value }, selectedFont === font.value && barStyles.miniBtnTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+                      <Text style={{ fontSize: 15, color: selectedFont === font.value ? '#FFFFFF' : text, fontFamily: font.value }} numberOfLines={1} adjustsFontSizeToFit>
                         {font.name}
                       </Text>
-                    </TouchableOpacity>
+                    </NeuPressable>
                   ))}
                 </View>
               </View>
 
-              <View style={barStyles.vDivider} />
+              <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
 
               {/* ── Font Size ── */}
               <View style={[barStyles.section, { width: 106 }]}>
-                <Text style={barStyles.sLabel}>Size</Text>
-                <View style={barStyles.stepper}>
+                <Text style={[barStyles.sLabel, { color: sub }]}>Size</Text>
+                <NeuView isDark={isDark} inset radius={8} style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(6, selectedFontSize - 2))}>
-                    <Text style={barStyles.stepBtnText}>−</Text>
+                    <Text style={{ fontSize: 18, fontWeight: '400', color: NEU_ACCENT }}>−</Text>
                   </TouchableOpacity>
-                  <Text style={barStyles.stepVal}>{selectedFontSize}</Text>
+                  <Text style={{ width: 30, textAlign: 'center', fontSize: 15, fontWeight: '600', color: text }}>{selectedFontSize}</Text>
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.min(36, selectedFontSize + 2))}>
-                    <Text style={barStyles.stepBtnText}>+</Text>
+                    <Text style={{ fontSize: 18, fontWeight: '400', color: NEU_ACCENT }}>+</Text>
                   </TouchableOpacity>
-                </View>
+                </NeuView>
               </View>
 
-              <View style={barStyles.vDivider} />
+              <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
 
               {/* ── Text Style ── */}
               <View style={[barStyles.section, { width: 138 }]}>
-                <Text style={barStyles.sLabel}>Style</Text>
+                <Text style={[barStyles.sLabel, { color: sub }]}>Style</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP }}>
                   {(['normal', 'bold', 'italic', 'underline'] as TextStyle[]).map(style => (
-                    <TouchableOpacity
+                    <NeuPressable
                       key={style}
-                      style={[barStyles.styleChip, selectedTextStyle === style && barStyles.miniBtnActive]}
+                      isDark={isDark}
+                      radius={7}
+                      backgroundColor={selectedTextStyle === style ? NEU_ACCENT : undefined}
+                      style={{ paddingHorizontal: 6, paddingVertical: 5, width: 62, alignItems: 'center' }}
                       onPress={() => onTextStyleChange(style)}
                     >
                       <Text
                         numberOfLines={1}
                         adjustsFontSizeToFit
                         style={[
-                        barStyles.styleChipText,
+                        { fontSize: 15, color: selectedTextStyle === style ? '#FFFFFF' : text },
                         style === 'bold' && { fontWeight: 'bold' },
                         style === 'italic' && { fontStyle: 'italic' },
                         style === 'underline' && { textDecorationLine: 'underline' },
-                        selectedTextStyle === style && barStyles.miniBtnTextActive,
                       ]}>
                         {style.charAt(0).toUpperCase() + style.slice(1)}
                       </Text>
-                    </TouchableOpacity>
+                    </NeuPressable>
                   ))}
                 </View>
               </View>
 
-              <View style={barStyles.vDivider} />
+              <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
 
               {/* ── Margins ── */}
               <View style={[barStyles.section, { width: 180 }]}>
-                <Text style={barStyles.sLabel}>Margins</Text>
+                <Text style={[barStyles.sLabel, { color: sub }]}>Margins</Text>
                 {(['top', 'bottom', 'left', 'right'] as const).map(side => (
                   <View key={side} style={barStyles.marginRow}>
-                    <Text style={barStyles.marginLabel}>{side.charAt(0).toUpperCase() + side.slice(1)}</Text>
-                    <View style={barStyles.stepper}>
+                    <Text style={{ fontSize: 15, fontWeight: '500', color: text, width: 42 }}>{side.charAt(0).toUpperCase() + side.slice(1)}</Text>
+                    <NeuView isDark={isDark} inset radius={8} style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
                         onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.max(0, selectedMargins[side] - 4) })}
                       >
-                        <Text style={barStyles.stepBtnText}>−</Text>
+                        <Text style={{ fontSize: 18, fontWeight: '400', color: NEU_ACCENT }}>−</Text>
                       </TouchableOpacity>
-                      <Text style={barStyles.stepVal}>{selectedMargins[side]}</Text>
+                      <Text style={{ width: 30, textAlign: 'center', fontSize: 15, fontWeight: '600', color: text }}>{selectedMargins[side]}</Text>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
                         onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.min(100, selectedMargins[side] + 4) })}
                       >
-                        <Text style={barStyles.stepBtnText}>+</Text>
+                        <Text style={{ fontSize: 18, fontWeight: '400', color: NEU_ACCENT }}>+</Text>
                       </TouchableOpacity>
-                    </View>
+                    </NeuView>
                   </View>
                 ))}
               </View>
 
-              <View style={barStyles.vDivider} />
+              <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
 
               {/* ── Spacing (both types — checklist gets item gaps, text gets line spacing) ── */}
               <View style={[barStyles.section, { width: contentType === 'checklist' ? 140 : 110 }]}>
-                <Text style={barStyles.sLabel}>{contentType === 'checklist' ? 'Item Spacing' : 'Line Spacing'}</Text>
+                <Text style={[barStyles.sLabel, { color: sub }]}>{contentType === 'checklist' ? 'Item Spacing' : 'Line Spacing'}</Text>
                 {contentType === 'checklist' ? (
                   ([
                     { key: 'top', label: 'Above' },
                     { key: 'bottom', label: 'Below' },
                   ] as { key: keyof ItemSpacing; label: string }[]).map(({ key, label }) => (
                     <View key={key} style={barStyles.marginRow}>
-                      <Text style={barStyles.marginLabel}>{label}</Text>
-                      <View style={barStyles.stepper}>
+                      <Text style={{ fontSize: 15, fontWeight: '500', color: text, width: 42 }}>{label}</Text>
+                      <NeuView isDark={isDark} inset radius={8} style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.max(0, selectedItemSpacing[key] - 2) })}
                         >
-                          <Text style={barStyles.stepBtnText}>−</Text>
+                          <Text style={{ fontSize: 18, fontWeight: '400', color: NEU_ACCENT }}>−</Text>
                         </TouchableOpacity>
-                        <Text style={barStyles.stepVal}>{selectedItemSpacing[key]}</Text>
+                        <Text style={{ width: 30, textAlign: 'center', fontSize: 15, fontWeight: '600', color: text }}>{selectedItemSpacing[key]}</Text>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.min(48, selectedItemSpacing[key] + 2) })}
                         >
-                          <Text style={barStyles.stepBtnText}>+</Text>
+                          <Text style={{ fontSize: 18, fontWeight: '400', color: NEU_ACCENT }}>+</Text>
                         </TouchableOpacity>
-                      </View>
+                      </NeuView>
                     </View>
                   ))
                 ) : (
-                  <View style={barStyles.stepper}>
+                  <NeuView isDark={isDark} inset radius={8} style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TouchableOpacity
                       style={barStyles.stepBtn}
                       onPress={() => onLineSpacingChange(Math.max(0, selectedLineSpacing - 2))}
                     >
-                      <Text style={barStyles.stepBtnText}>−</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '400', color: NEU_ACCENT }}>−</Text>
                     </TouchableOpacity>
-                    <Text style={barStyles.stepVal}>{selectedLineSpacing}</Text>
+                    <Text style={{ width: 30, textAlign: 'center', fontSize: 15, fontWeight: '600', color: text }}>{selectedLineSpacing}</Text>
                     <TouchableOpacity
                       style={barStyles.stepBtn}
                       onPress={() => onLineSpacingChange(Math.min(30, selectedLineSpacing + 2))}
                     >
-                      <Text style={barStyles.stepBtnText}>+</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '400', color: NEU_ACCENT }}>+</Text>
                     </TouchableOpacity>
-                  </View>
+                  </NeuView>
                 )}
               </View>
 
               {/* ── Display / Order (checklist only) ── */}
               {contentType === 'checklist' && (
                 <>
-                  <View style={barStyles.vDivider} />
+                  <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
                   <View style={[barStyles.section, { width: 110 }]}>
-                    <Text style={barStyles.sLabel}>Display</Text>
+                    <Text style={[barStyles.sLabel, { color: sub }]}>Display</Text>
                     {([
                       { value: 'single', label: 'Line' },
                       { value: 'wrap', label: 'Wrap' },
                     ] as { value: ChecklistTextMode; label: string }[]).map(opt => (
-                      <TouchableOpacity
+                      <NeuPressable
                         key={opt.value}
-                        style={[barStyles.miniBtn, selectedChecklistTextMode === opt.value && barStyles.miniBtnActive]}
+                        isDark={isDark}
+                        radius={8}
+                        backgroundColor={selectedChecklistTextMode === opt.value ? NEU_ACCENT : undefined}
+                        style={{ paddingHorizontal: 10, paddingVertical: 8, marginBottom: 5, alignItems: 'center' }}
                         onPress={() => onChecklistTextModeChange(opt.value)}
                       >
-                        <Text style={[barStyles.miniBtnText, { textAlign: 'center' }, selectedChecklistTextMode === opt.value && barStyles.miniBtnTextActive]}>
+                        <Text style={{ fontSize: 14, fontWeight: '500', textAlign: 'center', color: selectedChecklistTextMode === opt.value ? '#FFFFFF' : sub }}>
                           {opt.label}
                         </Text>
-                      </TouchableOpacity>
+                      </NeuPressable>
                     ))}
                   </View>
-                  <View style={barStyles.vDivider} />
+                  <View style={[barStyles.vDivider, { backgroundColor: p.darkShadow, opacity: 0.25 }]} />
                   <View style={[barStyles.section, { width: 124 }]}>
-                    <Text style={barStyles.sLabel}>Order</Text>
+                    <Text style={[barStyles.sLabel, { color: sub }]}>Order</Text>
                     {([
                       { value: 'as-is', label: 'As Is' },
                       { value: 'unchecked-first', label: 'Pending First' },
                       { value: 'alphabetical', label: 'A → Z' },
                     ] as { value: ChecklistSort; label: string }[]).map(opt => (
-                      <TouchableOpacity
+                      <NeuPressable
                         key={opt.value}
-                        style={[barStyles.miniBtn, selectedChecklistSort === opt.value && barStyles.miniBtnActive]}
+                        isDark={isDark}
+                        radius={8}
+                        backgroundColor={selectedChecklistSort === opt.value ? NEU_ACCENT : undefined}
+                        style={{ paddingHorizontal: 10, paddingVertical: 8, marginBottom: 5, alignItems: 'center' }}
                         onPress={() => onChecklistSortChange(opt.value)}
                       >
-                        <Text style={[barStyles.miniBtnText, { textAlign: 'center' }, selectedChecklistSort === opt.value && barStyles.miniBtnTextActive]}>
+                        <Text style={{ fontSize: 14, fontWeight: '500', textAlign: 'center', color: selectedChecklistSort === opt.value ? '#FFFFFF' : sub }}>
                           {opt.label}
                         </Text>
-                      </TouchableOpacity>
+                      </NeuPressable>
                     ))}
                   </View>
                 </>
               )}
             </ScrollView>
-          </View>
+          </NeuView>
 
           {/* ✕ floats at the top-right corner of the bar, outside the scroll area */}
-          <TouchableOpacity
-            style={barStyles.discardBtn}
+          <NeuPressable
+            isDark={isDark}
+            radius={18}
+            backgroundColor={NEU_DANGER}
+            style={{ position: 'absolute', bottom: 24 + STYLING_BAR_HEIGHT - 18, right: 14, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
             onPress={handleXPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={barStyles.discardText}>✕</Text>
-          </TouchableOpacity>
+            <Text style={{ fontSize: 14, color: '#FFFFFF', fontWeight: '700' }}>✕</Text>
+          </NeuPressable>
           </>
         )}
 
         {/* Discard confirmation overlay — inline so it works inside the existing Modal on iOS */}
         {showDiscardConfirm && (
-          <View style={[StyleSheet.absoluteFill, confirmStyles.backdrop]}>
-            <View style={confirmStyles.card}>
-              <Text style={confirmStyles.title}>Discard Changes?</Text>
-              <Text style={confirmStyles.message}>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', zIndex: 100 }]}>
+            <NeuView isDark={isDark} radius={NEU_RADIUS.lg} style={{ width: 300, padding: 24 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: text, marginBottom: 8, textAlign: 'center' }}>Discard Changes?</Text>
+              <Text style={{ fontSize: 14, color: sub, lineHeight: 20, textAlign: 'center', marginBottom: 20 }}>
                 All styling changes made since opening the panel will be reverted.
               </Text>
 
               {/* Don't show again checkbox */}
               <TouchableOpacity
-                style={confirmStyles.checkRow}
+                style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}
                 onPress={() => setDontShowAgain(v => !v)}
                 activeOpacity={0.7}
               >
-                <View style={[confirmStyles.checkbox, dontShowAgain && confirmStyles.checkboxChecked]}>
-                  {dontShowAgain && <Text style={confirmStyles.checkMark}>✓</Text>}
-                </View>
-                <Text style={confirmStyles.checkLabel}>Don't show this again</Text>
+                <NeuView
+                  isDark={isDark}
+                  inset={!dontShowAgain}
+                  radius={6}
+                  backgroundColor={dontShowAgain ? NEU_ACCENT : undefined}
+                  style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}
+                >
+                  {dontShowAgain && <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>✓</Text>}
+                </NeuView>
+                <Text style={{ fontSize: 14, color: text, flex: 1 }}>Don't show this again</Text>
               </TouchableOpacity>
 
-              <View style={confirmStyles.btnRow}>
-                <TouchableOpacity
-                  style={[confirmStyles.btn, confirmStyles.btnKeep]}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <NeuPressable
+                  isDark={isDark}
+                  radius={NEU_RADIUS.sm}
+                  style={{ flex: 1, height: 46, alignItems: 'center', justifyContent: 'center' }}
                   onPress={() => setShowDiscardConfirm(false)}
-                  activeOpacity={0.8}
                 >
-                  <Text style={confirmStyles.btnKeepText}>Keep Editing</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[confirmStyles.btn, confirmStyles.btnDiscard]}
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: NEU_ACCENT }}>Keep Editing</Text>
+                </NeuPressable>
+                <NeuPressable
+                  isDark={isDark}
+                  radius={NEU_RADIUS.sm}
+                  backgroundColor={NEU_DANGER}
+                  style={{ flex: 1, height: 46, alignItems: 'center', justifyContent: 'center' }}
                   onPress={handleConfirmDiscard}
-                  activeOpacity={0.8}
                 >
-                  <Text style={confirmStyles.btnDiscardText}>Discard</Text>
-                </TouchableOpacity>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF' }}>Discard</Text>
+                </NeuPressable>
               </View>
-            </View>
+            </NeuView>
           </View>
         )}
 
@@ -930,48 +987,7 @@ export default NoteModal;
 // ── Card styles ────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  card: {
-    width: MODAL_WIDTH,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    paddingHorizontal: CARD_HORIZONTAL_PADDING,
-    paddingTop: 24,
-    paddingBottom: 24,
-    overflow: 'hidden',
-  },
-  topToolbar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 12,
-  },
-  headerLabel: { fontSize: 18, fontWeight: '600', color: '#8E8E93', flex: 1 },
-  arrowIconV: {
-    fontSize: 16, fontWeight: '600', color: '#000000',
-    transform: [{ scaleX: 1.3 }],
-  },
-  closeIconX: {
-    fontSize: 18, fontWeight: '700', color: '#1C1C1E',
-  },
-  dividerLine: { height: 1, backgroundColor: '#E5E5EA' },
   textInput: { flex: 1, padding: 0 },
-  actionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  btn: { flex: 0.47, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  btnCancel: { backgroundColor: '#F2F2F7' },
-  btnConfirm: { backgroundColor: '#007AFF' },
-  cancelText: { fontSize: 15, fontWeight: '700', color: '#FF3B30' },
-  confirmText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });
 
 // ── Checklist styles ───────────────────────────────────────────────────────────
@@ -982,7 +998,6 @@ const clStyles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center' },
   checkboxTouch: { marginRight: ROW_GAP, alignItems: 'center', justifyContent: 'center' },
   inputWrap: { flex: 1, justifyContent: 'center', position: 'relative' },
-  brushWrap: { position: 'absolute', left: 0, top: '50%', marginTop: -(BRUSH_HEIGHT / 2) },
   input: { flex: 1, color: '#3A3A3C', paddingVertical: 4, paddingHorizontal: 0 },
   crossed: { textDecorationLine: 'line-through', color: '#AEAEB2' },
 });
@@ -990,225 +1005,33 @@ const clStyles = StyleSheet.create({
 // ── Styling bar styles ─────────────────────────────────────────────────────────
 
 const barStyles = StyleSheet.create({
-  bottomSheet: {
-    position: 'absolute',
-    bottom: 24,
-    left: 24,
-    right: 24,
-    height: STYLING_BAR_HEIGHT,
-    backgroundColor: '#F8F8F8',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    overflow: 'hidden',
-  },
-  discardBtn: {
-    position: 'absolute',
-    bottom: 24 + STYLING_BAR_HEIGHT - 18,
-    right: 14,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FF3B30',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  discardText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  scrollContent: {
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-    alignItems: 'flex-start',
-  },
   section: {
     paddingHorizontal: 8,
   },
   sLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#8E8E93',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
   },
   vDivider: {
     width: 1,
-    backgroundColor: '#E5E5EA',
     alignSelf: 'stretch',
     marginHorizontal: 3,
   },
-  miniBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#EFEFEF',
-    marginBottom: 5,
-    alignItems: 'center',
-  },
-  miniBtnActive: { backgroundColor: '#007AFF' },
-  miniBtnText: { fontSize: 14, fontWeight: '500', color: '#3A3A3C' },
-  miniBtnTextActive: { color: '#FFFFFF' },
   svgToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 7,
   },
-  miniCheck: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#C7C7CC',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F2F2F7',
-    marginRight: 5,
-  },
-  miniCheckOn: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
-  miniCheckMark: { fontSize: 9, fontWeight: '700', color: '#FFFFFF' },
-  svgToggleText: { fontSize: 14, color: '#1C1C1E', fontWeight: '500' },
   swatchGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP },
   disabled: { opacity: 0.35 },
-  swatch: {
-    width: MINI_SWATCH,
-    height: MINI_SWATCH,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  swatchSel: { borderWidth: 2, borderColor: '#1C1C1E' },
-  swatchCheck: { fontSize: 10, fontWeight: '700', color: '#1C1C1E' },
-  fontChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    borderRadius: 7,
-    backgroundColor: '#EFEFEF',
-    width: 70,
-    alignItems: 'center',
-  },
-  fontChipText: { fontSize: 15, color: '#3A3A3C' },
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFEFEF',
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginTop: 5,
-  },
   stepBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
-  stepBtnText: { fontSize: 18, fontWeight: '400', color: '#007AFF' },
-  stepVal: { width: 30, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#1C1C1E' },
-  styleChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    borderRadius: 7,
-    backgroundColor: '#EFEFEF',
-    width: 62,
-    alignItems: 'center',
-  },
-  styleChipText: { fontSize: 15, color: '#3A3A3C' },
   marginRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 4,
-  },
-  marginLabel: { fontSize: 15, fontWeight: '500', color: '#3A3A3C', width: 42 },
-});
-
-// ── Discard confirmation overlay styles ───────────────────────────────────────
-
-const confirmStyles = StyleSheet.create({
-  backdrop: {
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 100,
-  },
-  card: {
-    width: 300,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1C1C1E',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  message: {
-    fontSize: 14,
-    color: '#6C6C70',
-    lineHeight: 20,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#C7C7CC',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F2F2F7',
-    marginRight: 10,
-  },
-  checkboxChecked: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
-  },
-  checkMark: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  checkLabel: {
-    fontSize: 14,
-    color: '#1C1C1E',
-    flex: 1,
-  },
-  btnRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  btn: {
-    flex: 1,
-    height: 46,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnKeep: {
-    backgroundColor: '#F2F2F7',
-  },
-  btnKeepText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  btnDiscard: {
-    backgroundColor: '#FF3B30',
-  },
-  btnDiscardText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

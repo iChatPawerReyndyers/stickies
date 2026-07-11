@@ -2,14 +2,19 @@ import React from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Note, DEFAULT_LINE_SPACING } from '../types';
 import styles from '../styles';
+import SwipeToAction from '../components/SwipeToAction';
 
 type ReadOnlyModalProps = {
   visible: boolean;
   note: Note | null;
   onClose: () => void;
+  // Swipe-to-action while viewing a read-only (already-trashed) note. Left =
+  // permanently delete now, right = restore to the tab it was trashed from.
+  onSwipeDelete?: () => void;
+  onSwipeRestore?: () => void;
 };
 
-const ReadOnlyModal = ({ visible, note, onClose }: ReadOnlyModalProps) => {
+const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore }: ReadOnlyModalProps) => {
   if (!note) return null;
 
   // Mirrors NoteModal's getTextStyle() so a note looks the same here as it
@@ -63,10 +68,18 @@ const ReadOnlyModal = ({ visible, note, onClose }: ReadOnlyModalProps) => {
             <Text style={styles.modalTitle}>View Note</Text>
             <View style={{ width: 60 }} />
           </View>
-          <ScrollView style={styles.modalScroll}>
-            <Text style={[styles.label, getTextStyle(), { fontWeight: '700' }]}>{note.title}</Text>
-            {renderContent()}
-          </ScrollView>
+          <SwipeToAction
+            enabled={!!(onSwipeDelete || onSwipeRestore)}
+            onSwipeLeft={onSwipeDelete}
+            onSwipeRight={onSwipeRestore}
+            leftLabel="Delete Forever"
+            rightLabel="Restore"
+          >
+            <ScrollView style={styles.modalScroll}>
+              <Text style={[styles.label, getTextStyle(), { fontWeight: '700' }]}>{note.title}</Text>
+              {renderContent()}
+            </ScrollView>
+          </SwipeToAction>
         </View>
       </View>
     </Modal>

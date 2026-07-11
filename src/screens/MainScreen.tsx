@@ -14,6 +14,7 @@ import NoteModal from '../modals/NoteModal';
 import TabModal from '../modals/TabModal';
 import SettingsModal from '../modals/SettingsModal';
 import ReadOnlyModal from '../modals/ReadOnlyModal';
+import Toast from '../components/Toast';
 import styles, { getCardSize } from '../styles';
 import { Note, ChecklistItem, ContentType, TextStyle, DisplayNote, Tab, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder } from '../types';
 import {
@@ -23,6 +24,7 @@ import {
   TAB_COLOR_PALETTE,
   ALL_TAB_COLOR,
   GENERAL_TAB_COLOR,
+  ARCHIVED_TAB_COLOR,
   TRASH_TAB_COLOR,
 } from '../constants';
 import { getRandomFrameId } from '../frames';
@@ -33,6 +35,10 @@ const NOTES_KEY = '@sticky_notes_notes_v1';
 const TABS_KEY = '@sticky_notes_tabs_v1';
 const ACTIVE_TAB_KEY = '@sticky_notes_active_tab_v1';
 const SETTINGS_KEY = '@sticky_notes_settings_v1';
+
+const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const TRASH_PURGE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // check hourly while app is open
+const RESTORE_FALLBACK_TAB = 'general';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
@@ -48,7 +54,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultTabId: 'all',
 };
 
-const isBuiltInTabId = (id: string) => id === 'all' || id === 'general' || id === 'trash';
+const isBuiltInTabId = (id: string) => id === 'all' || id === 'general' || id === 'archived' || id === 'trash';
 
 // Cycles through the palette based on how many custom tabs already exist,
 // so each new tab pill gets a different color.
@@ -78,6 +84,7 @@ const MainScreen = () => {
   const [tabs, setTabs] = useState<Tab[]>([
     { id: 'all', name: 'All', color: ALL_TAB_COLOR },
     { id: 'general', name: 'General', color: GENERAL_TAB_COLOR },
+    { id: 'archived', name: 'Archived', color: ARCHIVED_TAB_COLOR },
     { id: 'trash', name: 'Trash', color: TRASH_TAB_COLOR },
   ]);
   const [activeTabId, setActiveTabId] = useState('all');
@@ -93,6 +100,12 @@ const MainScreen = () => {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
+  // Bottom "toast" shown after any swipe action (trash / archive / restore /
+  // permanent delete), with an Undo button. Auto-hides after 5s (see Toast.tsx).
+  const [toast, setToast] = useState<{ visible: boolean; message: string; onUndo?: () => void }>({
+    visible: false,
+    message: '',
+  });
 
   const updateSettings = (patch: Partial<AppSettings>) =>
     setSettings(prev => ({ ...prev, ...patch }));
@@ -104,6 +117,11 @@ const MainScreen = () => {
 
   const nonTrashTabs = tabs.filter(t => t.id !== 'trash');
   const trashTab = tabs.find(t => t.id === 'trash');
+
+  const showToast = (message: string, onUndo?: () => void) => {
+    setToast({ visible: true, message, onUndo });
+  };
+  const hideToast = () => setToast(prev => ({ ...prev, visible: false }));
 
   useEffect(() => {
     const load = async () => {
@@ -132,9 +150,20 @@ const MainScreen = () => {
             const hasAll = parsedTabs.some((t: any) => t.id === 'all');
             const hasTrash = parsedTabs.some((t: any) => t.id === 'trash');
             const hasGeneral = parsedTabs.some((t: any) => t.id === 'general');
+            const hasArchived = parsedTabs.some((t: any) => t.id === 'archived');
             let finalTabs = parsedTabs;
             if (!hasAll) finalTabs = [{ id: 'all', name: 'All', color: ALL_TAB_COLOR }, ...finalTabs];
             if (!hasGeneral) finalTabs = [...finalTabs, { id: 'general', name: 'General', color: GENERAL_TAB_COLOR }];
+            if (!hasArchived) {
+              // Insert right before Trash if Trash already exists, otherwise append.
+              const trashIdx = finalTabs.findIndex((t: any) => t.id === 'trash');
+              const archivedTab = { id: 'archived', name: 'Archived', color: ARCHIVED_TAB_COLOR };
+              if (trashIdx >= 0) {
+                finalTabs = [...finalTabs.slice(0, trashIdx), archivedTab, ...finalTabs.slice(trashIdx)];
+              } else {
+                finalTabs = [...finalTabs, archivedTab];
+              }
+            }
             if (!hasTrash) finalTabs = [...finalTabs, { id: 'trash', name: 'Trash', color: TRASH_TAB_COLOR }];
 
             // Back-fill colors for tabs that were persisted before the colored pill rail existed.
@@ -143,6 +172,7 @@ const MainScreen = () => {
               if (t.color) return t;
               if (t.id === 'all') return { ...t, color: ALL_TAB_COLOR };
               if (t.id === 'general') return { ...t, color: GENERAL_TAB_COLOR };
+              if (t.id === 'archived') return { ...t, color: ARCHIVED_TAB_COLOR };
               if (t.id === 'trash') return { ...t, color: TRASH_TAB_COLOR };
               const color = TAB_COLOR_PALETTE[customColorIndex % TAB_COLOR_PALETTE.length];
               customColorIndex += 1;
@@ -194,9 +224,31 @@ const MainScreen = () => {
     save();
   }, [notes, tabs, activeTabId, settings, isDataLoaded]);
 
+  // Auto-purge — permanently removes any note that's been sitting in Trash
+  // for more than 30 days. Runs once after load, then re-checks hourly while
+  // the app stays open (a note only gets purged if the app is actually
+  // running past its 30-day mark, same as most "empty trash automatically"
+  // implementations without a background task).
+  useEffect(() => {
+    if (!isDataLoaded) return;
+
+    const purgeExpiredTrash = () => {
+      const now = Date.now();
+      setNotes(prev => prev.filter(n => !(n.tabId === 'trash' && n.deletedAt && now - n.deletedAt > TRASH_RETENTION_MS)));
+    };
+
+    purgeExpiredTrash();
+    const interval = setInterval(purgeExpiredTrash, TRASH_PURGE_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isDataLoaded]);
+
   const createNewNote = () => {
     if (activeTabId === 'trash') {
       Alert.alert('Cannot create in Trash', 'You cannot create a note inside Trash.');
+      return;
+    }
+    if (activeTabId === 'archived') {
+      Alert.alert('Cannot create in Archived', 'Create the note elsewhere, then archive it.');
       return;
     }
     setEditingNote(null);
@@ -304,9 +356,9 @@ const MainScreen = () => {
   };
 
   const deleteTab = (id: string) => {
-    if (id === 'all' || id === 'trash') return;
+    if (id === 'all' || id === 'trash' || id === 'archived') return;
     setTabs(tabs.filter(t => t.id !== id));
-    setNotes(notes.map(n => (n.tabId === id ? { ...n, tabId: 'trash' } : n)));
+    setNotes(notes.map(n => (n.tabId === id ? { ...n, tabId: 'trash', deletedAt: Date.now(), previousTabId: 'general' } : n)));
     setActiveTabId('trash');
     setShowTabModal(false);
   };
@@ -387,6 +439,76 @@ const MainScreen = () => {
         },
       ]
     );
+  };
+
+  // Central handler for every swipe-left / swipe-right gesture, wherever it
+  // happens (regular editor, View Only, or the read-only Trash viewer).
+  // Behavior depends on where the note currently lives:
+  //   • Normal tab  → left: Trash, right: Archive
+  //   • Archived    → left: Trash (keeps its pre-archive previousTabId),
+  //                   right: Unarchive (restore to previousTabId)
+  //   • Trash       → left: Permanently delete, right: Restore to previousTabId
+  // Every branch shows a 5s toast with Undo that reverts the exact change.
+  const handleSwipeAction = (note: Note, direction: 'left' | 'right') => {
+    const prevSnapshot: Note = { ...note };
+
+    if (note.tabId === 'trash') {
+      if (direction === 'left') {
+        setNotes(prev => prev.filter(n => n.id !== note.id));
+        showToast('Note permanently deleted', () => {
+          setNotes(prev => [prevSnapshot, ...prev]);
+        });
+      } else {
+        const restoreTo = note.previousTabId || RESTORE_FALLBACK_TAB;
+        setNotes(prev => prev.map(n => n.id === note.id
+          ? { ...n, tabId: restoreTo, deletedAt: undefined, previousTabId: undefined }
+          : n));
+        showToast('Note restored', () => {
+          setNotes(prev => prev.map(n => n.id === note.id ? prevSnapshot : n));
+        });
+      }
+      return;
+    }
+
+    if (note.tabId === 'archived') {
+      if (direction === 'left') {
+        // Archived -> Trash: keep previousTabId pointing at the tab the note
+        // lived in before it was archived, so a later restore-from-trash
+        // lands back there instead of at "Archived".
+        setNotes(prev => prev.map(n => n.id === note.id
+          ? { ...n, tabId: 'trash', deletedAt: Date.now() }
+          : n));
+        showToast('Moved to Trash', () => {
+          setNotes(prev => prev.map(n => n.id === note.id ? prevSnapshot : n));
+        });
+      } else {
+        const restoreTo = note.previousTabId || RESTORE_FALLBACK_TAB;
+        setNotes(prev => prev.map(n => n.id === note.id
+          ? { ...n, tabId: restoreTo, archivedAt: undefined, previousTabId: undefined }
+          : n));
+        showToast('Note unarchived', () => {
+          setNotes(prev => prev.map(n => n.id === note.id ? prevSnapshot : n));
+        });
+      }
+      return;
+    }
+
+    // Normal (non-trash, non-archived) tab
+    if (direction === 'left') {
+      setNotes(prev => prev.map(n => n.id === note.id
+        ? { ...n, tabId: 'trash', deletedAt: Date.now(), previousTabId: note.tabId }
+        : n));
+      showToast('Moved to Trash', () => {
+        setNotes(prev => prev.map(n => n.id === note.id ? prevSnapshot : n));
+      });
+    } else {
+      setNotes(prev => prev.map(n => n.id === note.id
+        ? { ...n, tabId: 'archived', archivedAt: Date.now(), previousTabId: note.tabId }
+        : n));
+      showToast('Archived', () => {
+        setNotes(prev => prev.map(n => n.id === note.id ? prevSnapshot : n));
+      });
+    }
   };
 
   const renderItem = ({ item, index }: { item: DisplayNote; index: number }) => {
@@ -559,6 +681,18 @@ const MainScreen = () => {
         visible={showReadOnlyModal}
         note={readOnlyNote}
         onClose={() => { setShowReadOnlyModal(false); setReadOnlyNote(null); }}
+        onSwipeDelete={readOnlyNote ? () => {
+          const note = readOnlyNote;
+          setShowReadOnlyModal(false);
+          setReadOnlyNote(null);
+          handleSwipeAction(note, 'left');
+        } : undefined}
+        onSwipeRestore={readOnlyNote ? () => {
+          const note = readOnlyNote;
+          setShowReadOnlyModal(false);
+          setReadOnlyNote(null);
+          handleSwipeAction(note, 'right');
+        } : undefined}
       />
 
       <NoteModal
@@ -598,11 +732,21 @@ const MainScreen = () => {
         onDisableDiscardConfirmation={() => updateSettings({ showDiscardConfirmation: false })}
         onSave={saveNote}
         onCancel={() => setShowModal(false)}
+        onSwipeDelete={editingNote ? () => {
+          const note = editingNote;
+          setShowModal(false);
+          handleSwipeAction(note, 'left');
+        } : undefined}
+        onSwipeArchive={editingNote ? () => {
+          const note = editingNote;
+          setShowModal(false);
+          handleSwipeAction(note, 'right');
+        } : undefined}
       />
 
       {/* View Only — long-press any note card. Renders the note exactly as
-          saved (color/font/SVG frame) with no editing controls; closes only
-          via the ✕ in the top-right corner. */}
+          saved (color/font/SVG frame) with no editing controls; closes via
+          the ✕, or via a swipe left/right to trash/archive. */}
       <NoteModal
         visible={showViewOnlyModal}
         tabName={viewOnlyTabName}
@@ -638,6 +782,16 @@ const MainScreen = () => {
         showDiscardConfirmation={false}
         onDisableDiscardConfirmation={() => {}}
         viewOnly
+        onSwipeDelete={viewOnlyNote ? () => {
+          const note = viewOnlyNote;
+          closeViewOnlyModal();
+          handleSwipeAction(note, 'left');
+        } : undefined}
+        onSwipeArchive={viewOnlyNote ? () => {
+          const note = viewOnlyNote;
+          closeViewOnlyModal();
+          handleSwipeAction(note, 'right');
+        } : undefined}
       />
 
       <SettingsModal
@@ -663,6 +817,14 @@ const MainScreen = () => {
       >
         <Text style={styles.fabText}>+</Text>
       </NeuPressable>
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        onUndo={toast.onUndo}
+        onHide={hideToast}
+        isDark={settings.theme === 'dark'}
+      />
     </SafeAreaView>
   );
 };

@@ -9,8 +9,27 @@
 // like ScrollViews or variable-height rows.
 
 import React, { useState } from 'react';
-import { View, ViewStyle, StyleProp, Pressable, PressableProps } from 'react-native';
+import { View, ViewStyle, StyleProp, Pressable, PressableProps, Platform } from 'react-native';
 import { getNeuPalette, NEU_SHADOW, NEU_ACCENT, NEU_RADIUS } from '../theme/neumorphic';
+
+const IS_ANDROID = Platform.OS === 'android';
+
+// Android's `elevation` model only draws a single soft gray shadow below a
+// view — it ignores shadowColor/shadowOffset, so the two-tone (light
+// top-left / dark bottom-right) shadow pair below is effectively invisible
+// there. Since a raised card's default background is otherwise identical to
+// the screen behind it, the card has no visible edge at all on Android.
+// Blending the default (non-custom-color) card tone a bit lighter gives it
+// a real color boundary against the page, independent of any shadow.
+const lightenForAndroidCard = (hex: string, amount = 0.35): string => {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return hex;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * amount);
+  return `#${[mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+};
 
 type NeuViewProps = {
   children?: React.ReactNode;
@@ -33,6 +52,10 @@ export const NeuView: React.FC<NeuViewProps> = ({
 }) => {
   const p = getNeuPalette(isDark);
   const bg = backgroundColor || (inset ? p.insetBase : p.base);
+  // Only tint the *default* base tone — an explicit backgroundColor (a
+  // colored note swatch, an accent button, etc.) already stands out against
+  // the page by hue, so leave it alone.
+  const androidRaisedBg = IS_ANDROID && !backgroundColor && !inset ? lightenForAndroidCard(bg) : bg;
 
   if (inset) {
     // Carved-in look approximated with a two-tone inner border (dark
@@ -78,7 +101,10 @@ export const NeuView: React.FC<NeuViewProps> = ({
           shadowOffset: { width: distance, height: distance },
           shadowOpacity: 0.95,
           shadowRadius: distance * 1.3,
-          elevation: distance,
+          // Android's elevation shadow reads much softer/grayer than iOS's
+          // native shadow at the same distance value, so it's boosted here
+          // to stay visible against a page that's nearly the same color.
+          elevation: IS_ANDROID ? distance * 1.8 : distance,
         }}
       />
       <View
@@ -93,7 +119,16 @@ export const NeuView: React.FC<NeuViewProps> = ({
           shadowRadius: distance * 1.3,
         }}
       />
-      <View style={[{ borderRadius: radius, backgroundColor: bg }, style]}>
+      <View
+        style={[
+          { borderRadius: radius, backgroundColor: androidRaisedBg },
+          IS_ANDROID && {
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.65)',
+          },
+          style,
+        ]}
+      >
         {children}
       </View>
     </View>

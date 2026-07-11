@@ -85,6 +85,15 @@ export interface Note {
   lineSpacing?: number;
   checklistSort?: ChecklistSort;
   checklistTextMode?: ChecklistTextMode;
+  // Set when the note is swiped into Trash — used to auto-purge after 30 days.
+  deletedAt?: number;
+  // Set when the note is swiped into Archived — informational, not required
+  // for any logic, but handy if you want to sort/display "archived on" later.
+  archivedAt?: number;
+  // The tabId the note lived in right before being trashed or archived, so
+  // swipe-right (restore/unarchive) can put it back where it came from
+  // instead of always dropping it into General.
+  previousTabId?: string;
 }
 
 export type DisplayNote = Note | { id: string; placeholder: true };
