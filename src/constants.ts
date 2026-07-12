@@ -27,9 +27,21 @@ export const FONTS = Platform.OS === 'ios'
 // so every pill in the vertical tab rail gets a distinct color.
 export const TAB_COLOR_PALETTE = [
   ...NEU_NOTE_COLORS,
-  '#4677C9',
-  '#C2185B',
+  '#A2BBE4', // pastel blue (was #4677C9)
+  '#E08BAD', // pastel magenta (was #C2185B)
 ];
+
+// One-time remap from the old saturated note-color set to their new pastel
+// equivalents, applied when notes are loaded from storage so existing notes
+// pick up the new palette instead of staying stuck on their original color.
+export const LEGACY_COLOR_MIGRATION: Record<string, string> = {
+  '#F5A623': '#FBDDA6',
+  '#5AC8FA': '#B8E4FB',
+  '#FF6B81': '#FBC4CE',
+  '#34D399': '#B4EAD7',
+  '#A78BFA': '#D6CCF9',
+  '#FFD166': '#FDE7B3',
+};
 
 // Fixed colors for the built-in tabs that always exist.
 export const ALL_TAB_COLOR = '#8A90A0';

@@ -26,10 +26,12 @@ import {
   GENERAL_TAB_COLOR,
   ARCHIVED_TAB_COLOR,
   TRASH_TAB_COLOR,
+  LEGACY_COLOR_MIGRATION,
 } from '../constants';
 import { getRandomFrameId } from '../frames';
 import { NeuView, NeuPressable } from '../components/Neumorphic';
 import { NEU_ACCENT } from '../theme/neumorphic';
+import { darkenColor } from '../utils/color';
 
 const NOTES_KEY = '@sticky_notes_notes_v1';
 const TABS_KEY = '@sticky_notes_tabs_v1';
@@ -146,6 +148,7 @@ const MainScreen = () => {
               ...note,
               textColor: note.textColor || '#333333',
               contentType: note.contentType === 'bullets' ? 'text' : note.contentType,
+              color: LEGACY_COLOR_MIGRATION[note.color] || note.color,
             })));
           }
         }
@@ -524,10 +527,10 @@ const MainScreen = () => {
   const renderItem = ({ item, index }: { item: DisplayNote; index: number }) => {
     const itemStyle = index % numColumns === numColumns - 1
       ? { marginRight: 0 }
-      : { marginRight: 8 };
+      : { marginRight: 12 };
 
     if ('placeholder' in item && item.placeholder) {
-      return <View style={[styles.card, styles.placeholderCard, itemStyle]} />;
+      return <View style={[styles.card, styles.placeholderCard, itemStyle, { width: cardSize, height: cardSize }]} />;
     }
 
     const note = item as Note;
@@ -601,8 +604,7 @@ const MainScreen = () => {
               <View key={tab.id} style={styles.tabPillGroup}>
                 <NeuView
                   radius={16}
-                  backgroundColor={tab.color}
-                  inset={isActive}
+                  backgroundColor={isActive ? darkenColor(tab.color) : tab.color}
                   style={{ width: 32, height: 80, marginBottom: 4 }}
                 >
                   <TouchableOpacity
@@ -640,8 +642,7 @@ const MainScreen = () => {
             <View style={styles.tabPillDivider}>
               <NeuView
                 radius={16}
-                backgroundColor={trashTab.color}
-                inset={activeTabId === trashTab.id}
+                backgroundColor={activeTabId === trashTab.id ? darkenColor(trashTab.color) : trashTab.color}
                 style={{ width: 32, height: 80 }}
               >
                 <TouchableOpacity

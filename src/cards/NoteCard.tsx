@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, GestureResponderEvent } from 'react-native';
+import { View, Text, GestureResponderEvent } from 'react-native';
 import { Note, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING } from '../types';
 import styles, { CARD_SIZE } from '../styles';
 import { FRAME_COMPONENTS } from '../frames';
+import { NeuPressable } from '../components/Neumorphic';
+import { NEU_RADIUS } from '../theme/neumorphic';
 
 type NoteCardProps = {
   note: Note;
@@ -140,8 +142,10 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
     : null;
 
   return (
-    <TouchableOpacity
-      style={[styles.card, { width: size, height: size }, !FrameComponent && { backgroundColor: note.color }]}
+    <NeuPressable
+      radius={NEU_RADIUS.lg}
+      backgroundColor={FrameComponent ? 'transparent' : note.color}
+      style={{ width: size, height: size, padding: 12, overflow: 'hidden' }}
       onPress={onEdit}
       onLongPress={onLongPress}
       delayLongPress={200}
@@ -155,7 +159,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
         </>
       )}
       <View style={[styles.cardContent, cardMargin]}>{renderPreview()}</View>
-    </TouchableOpacity>
+    </NeuPressable>
   );
 };
 

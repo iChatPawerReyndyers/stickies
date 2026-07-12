@@ -31,6 +31,34 @@ const lightenForAndroidCard = (hex: string, amount = 0.35): string => {
   return `#${[mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
 };
 
+// Android has no way to render a real blurred, colored, directional shadow
+// on a plain View (`elevation` is a single flat dark shadow only). This
+// fakes blur by stacking several solid-color layers at a fixed offset
+// (`shift`) with increasing spread (`grow`) and decreasing opacity — the
+// constant shift keeps the shadow clearly on one side (near-side reach =
+// shift+grow, far-side reach = grow-shift, which stays at/near zero until
+// grow catches up), while more, smaller opacity steps reduce the visible
+// banding a small number of hard-edged layers produces.
+type BlurLayer = { shift: number; grow: number; opacity: number };
+
+const buildDarkBlurLayers = (distance: number): BlurLayer[] => {
+  const shift = distance * .3;
+  return [0.3, 0.7, 1.2, 1.8, 2.6, 3.6].map((m, i) => ({
+    shift,
+    grow: distance * m,
+    opacity: [0.32, 0.24, 0.18, 0.12, 0.07, 0.04][i],
+  }));
+};
+
+const buildLightBlurLayers = (distance: number): BlurLayer[] => {
+  const shift = distance * 0.3;
+  return [0.3, 0.7, 1.2, 1.8, 2.6, 3.6].map((m, i) => ({
+    shift,
+    grow: distance * m,
+    opacity: [0.32, 0.24, 0.18, 0.12, 0.07, 0.04][i],
+  }));
+};
+
 type NeuViewProps = {
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -85,47 +113,79 @@ export const NeuView: React.FC<NeuViewProps> = ({
   }
 
   // Raised: an unconstrained relative wrapper (sized purely by its one real
-  // content child below) plus two absolutely-positioned same-size siblings
-  // that each cast a single-direction native shadow (dark bottom-right,
-  // light top-left). The real content View paints last/on top, hiding the
-  // siblings' fill and leaving only their shadow bleed visible at the edges.
+  // content child below). iOS gets two same-size siblings casting a real
+  // native dual shadow. Android can't render that (see buildBlurLayers
+  // comment above) so it instead gets stacked fake-blur layers in each
+  // direction. Either way the real content View paints last/on top.
   return (
     <View style={{ position: 'relative' }}>
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          borderRadius: radius,
-          backgroundColor: bg,
-          shadowColor: p.darkShadow,
-          shadowOffset: { width: distance, height: distance },
-          shadowOpacity: 0.95,
-          shadowRadius: distance * 1.3,
-          // Android's elevation shadow reads much softer/grayer than iOS's
-          // native shadow at the same distance value, so it's boosted here
-          // to stay visible against a page that's nearly the same color.
-          elevation: IS_ANDROID ? distance * 1.8 : distance,
-        }}
-      />
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          borderRadius: radius,
-          backgroundColor: bg,
-          shadowColor: p.lightShadow,
-          shadowOffset: { width: -distance, height: -distance },
-          shadowOpacity: 1,
-          shadowRadius: distance * 1.3,
-        }}
-      />
+      {IS_ANDROID ? (
+        <>
+          {buildDarkBlurLayers(distance).map((l, i) => (
+            <View
+              key={`dark-${i}`}
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: l.shift - l.grow,
+                left: l.shift - l.grow,
+                right: -(l.shift + l.grow),
+                bottom: -(l.shift + l.grow),
+                borderRadius: radius + l.grow,
+                backgroundColor: p.darkShadow,
+                opacity: l.opacity,
+              }}
+            />
+          ))}
+          {buildLightBlurLayers(distance).map((l, i) => (
+            <View
+              key={`light-${i}`}
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: -l.shift - l.grow,
+                left: -l.shift - l.grow,
+                right: l.shift - l.grow,
+                bottom: l.shift - l.grow,
+                borderRadius: radius + l.grow,
+                backgroundColor: p.lightShadow,
+                opacity: l.opacity,
+              }}
+            />
+          ))}
+        </>
+      ) : (
+        <>
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              borderRadius: radius,
+              backgroundColor: bg,
+              shadowColor: p.darkShadow,
+              shadowOffset: { width: distance, height: distance },
+              shadowOpacity: 0.95,
+              shadowRadius: distance * 1.3,
+              elevation: distance,
+            }}
+          />
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              borderRadius: radius,
+              backgroundColor: bg,
+              shadowColor: p.lightShadow,
+              shadowOffset: { width: -distance, height: -distance },
+              shadowOpacity: 1,
+              shadowRadius: distance * 1.3,
+            }}
+          />
+        </>
+      )}
       <View
         style={[
           { borderRadius: radius, backgroundColor: androidRaisedBg },
-          IS_ANDROID && {
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.65)',
-          },
           style,
         ]}
       >

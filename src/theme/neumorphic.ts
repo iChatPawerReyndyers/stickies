@@ -29,16 +29,18 @@ export const NEU_ACCENT = '#F5A623';       // warm orange
 export const NEU_ACCENT_SOFT = '#FBD9A6';  // lighter tint, behind accent icons
 export const NEU_DANGER = '#E06B6B';        // cancel / destructive text & actions
 
-// Bright note-color palette. The "neumorphic-ness" comes from the dual-shadow
-// pair around each card, not from the base hue, so these can stay saturated
-// and still read as soft-UI once wrapped in NeuView.
+// Pastel note-color palette — softened tints of the same hues so the
+// dual light/dark neumorphic shadow actually has contrast to read against.
+// Fully saturated colors sit too far from the page background (NEU_BASE)
+// for the shadow's light side to register, which made cards look like a
+// flat single drop-shadow instead of a soft-UI surface.
 export const NEU_NOTE_COLORS = [
-  '#F5A623', // orange (primary accent)
-  '#5AC8FA', // sky blue
-  '#FF6B81', // coral pink
-  '#34D399', // mint green
-  '#A78BFA', // soft violet
-  '#FFD166', // warm yellow
+  '#FBDDA6', // pastel peach   (was #F5A623 orange)
+  '#B8E4FB', // pastel sky blue (was #5AC8FA)
+  '#FBC4CE', // pastel coral pink (was #FF6B81)
+  '#B4EAD7', // pastel mint    (was #34D399)
+  '#D6CCF9', // pastel violet  (was #A78BFA)
+  '#FDE7B3', // pastel yellow  (was #FFD166)
 ];
 
 export const NEU_RADIUS = {

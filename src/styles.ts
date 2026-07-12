@@ -3,7 +3,7 @@ import { NEU_BASE, NEU_LIGHT_SHADOW, NEU_DARK_SHADOW, NEU_TEXT_PRIMARY, NEU_TEXT
 
 const RAIL_WIDTH = 64;
 export const NOTE_COLUMNS = 2;
-const GRID_GAP = 8;
+const GRID_GAP = 12;
 export const CARD_SIZE = (Dimensions.get('window').width - RAIL_WIDTH - 32 - GRID_GAP * (NOTE_COLUMNS - 1)) / NOTE_COLUMNS;
 
 // Dynamic card size for configurable grid columns
@@ -26,7 +26,8 @@ export default StyleSheet.create({
     borderBottomWidth: 0,
   },
   headerSpacing: {
-    paddingTop: 12,
+    paddingTop: 16,
+    paddingBottom: 4,
   },
   headerTitle: {
     fontSize: 24,
@@ -146,18 +147,18 @@ export default StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    padding: 8,
+    padding: 12,
   },
   noteGrid: {
     justifyContent: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   card: {
     width: CARD_SIZE,
     aspectRatio: 1,
-    borderRadius: NEU_RADIUS.md,
+    borderRadius: NEU_RADIUS.lg,
     padding: 12,
-    marginBottom: 8,
+    marginBottom: 12,
     overflow: 'hidden',
   },
   cardHeader: {
@@ -235,7 +236,7 @@ export default StyleSheet.create({
     minHeight: 80,
   },
   cardPreview: {
-    fontSize: 8,
+    fontSize: 9,
     color: '#555',
     marginBottom: 4,
   },
