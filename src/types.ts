@@ -4,6 +4,9 @@ export type ChecklistSort = 'as-is' | 'unchecked-first' | 'alphabetical';
 export type ChecklistTextMode = 'single' | 'wrap';
 export type SortOrder = 'manual' | 'created-desc' | 'created-asc' | 'title-asc' | 'title-desc';
 export type AppTheme = 'light' | 'dark';
+// How the main grid renders notes — square preview tiles ('grid') or
+// compact single-column title/snippet rows ('list').
+export type ViewMode = 'grid' | 'list';
 
 export interface StickieStyle {
   id: string;
@@ -30,6 +33,9 @@ export interface AppSettings {
   defaultFont: string;
   defaultFontSize: number;
   gridColumns: 2 | 3;
+  // Grid vs list display for the main notes screen. Defaults to 'grid' so
+  // existing users see no change until they opt into list view.
+  viewMode: ViewMode;
   sortOrder: SortOrder;
   showDiscardConfirmation: boolean;
   // When true (default), switching a note's content type away from checklist

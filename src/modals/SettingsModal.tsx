@@ -12,7 +12,7 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
-import { AppSettings, AppTheme, SortOrder, Note, Tab, TextStyle, ContentType, ChecklistItem, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, NoteMargins } from '../types';
+import { AppSettings, AppTheme, SortOrder, ViewMode, Note, Tab, TextStyle, ContentType, ChecklistItem, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, NoteMargins } from '../types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
@@ -256,6 +256,8 @@ const SettingsModal = ({
     </NeuView>
   );
 
+  const isListView = settings.viewMode === 'list';
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -370,22 +372,50 @@ const SettingsModal = ({
           {/* ── LAYOUT ── */}
           <SectionHeader label="Layout" />
           <SectionCard>
-            <Row last>
-              <RowLabel label="Grid columns" />
+            <Row>
+              <RowLabel label="Notes view" hint="How notes are displayed on the main screen" />
               <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3 }}>
-                {([2, 3] as (2 | 3)[]).map(n => (
+                {(['grid', 'list'] as ViewMode[]).map(mode => (
                   <NeuPressable
-                    key={n}
+                    key={mode}
                     isDark={isDark}
                     radius={8}
-                    backgroundColor={settings.gridColumns === n ? p.base : undefined}
+                    backgroundColor={settings.viewMode === mode ? p.base : undefined}
                     style={{ paddingHorizontal: 14, paddingVertical: 6 }}
-                    onPress={() => onUpdateSettings({ gridColumns: n })}
+                    onPress={() => onUpdateSettings({ viewMode: mode })}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: settings.gridColumns === n ? '700' : '400', color: settings.gridColumns === n ? text : sub }}>{n}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: settings.viewMode === mode ? '700' : '400', color: settings.viewMode === mode ? text : sub }}>
+                      {mode === 'grid' ? 'Grid' : 'List'}
+                    </Text>
                   </NeuPressable>
                 ))}
               </NeuView>
+            </Row>
+
+            <Row last>
+              <RowLabel label="Grid columns" hint={isListView ? 'Only applies in grid view' : undefined} />
+              {/* pointerEvents has to live on a plain View — NeuView's props
+                  don't include it (and it isn't spread onto the inner View),
+                  so passing it directly to NeuView fails to typecheck. */}
+              <View
+                style={isListView ? { opacity: 0.4 } : undefined}
+                pointerEvents={isListView ? 'none' : 'auto'}
+              >
+                <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3 }}>
+                  {([2, 3] as (2 | 3)[]).map(n => (
+                    <NeuPressable
+                      key={n}
+                      isDark={isDark}
+                      radius={8}
+                      backgroundColor={settings.gridColumns === n ? p.base : undefined}
+                      style={{ paddingHorizontal: 14, paddingVertical: 6 }}
+                      onPress={() => onUpdateSettings({ gridColumns: n })}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: settings.gridColumns === n ? '700' : '400', color: settings.gridColumns === n ? text : sub }}>{n}</Text>
+                    </NeuPressable>
+                  ))}
+                </NeuView>
+              </View>
             </Row>
           </SectionCard>
 

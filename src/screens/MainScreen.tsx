@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NoteCard from '../cards/NoteCard';
+import NoteListRow from '../components/NoteListRow';
 import NoteModal from '../modals/NoteModal';
 import TabModal from '../modals/TabModal';
 import SettingsModal from '../modals/SettingsModal';
@@ -49,6 +50,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultFont: FONTS[0].value,
   defaultFontSize: 16,
   gridColumns: 2,
+  viewMode: 'grid',
   sortOrder: 'manual',
   showDiscardConfirmation: true,
   restoreChecklistState: true,
@@ -118,10 +120,14 @@ const MainScreen = () => {
   const updateSettings = (patch: Partial<AppSettings>) =>
     setSettings(prev => ({ ...prev, ...patch }));
 
-  // Single source of truth for grid column count — drives FlatList's
-  // numColumns, per-item right-margin, and placeholder padding below, so the
-  // whole grid always agrees on how many columns actually exist.
-  const numColumns = settings.gridColumns;
+  // Whether the main grid renders as single-column list rows instead of the
+  // square-tile grid. When true, grid column count is irrelevant.
+  const isListView = settings.viewMode === 'list';
+
+  // Single source of truth for column count — drives FlatList's numColumns,
+  // per-item right-margin, and placeholder padding below, so the whole grid
+  // always agrees on how many columns actually exist. Forced to 1 in list view.
+  const numColumns = isListView ? 1 : settings.gridColumns;
 
   const nonTrashTabs = tabs.filter(t => t.id !== 'trash');
   const trashTab = tabs.find(t => t.id === 'trash');
@@ -525,15 +531,30 @@ const MainScreen = () => {
   };
 
   const renderItem = ({ item, index }: { item: DisplayNote; index: number }) => {
-    const itemStyle = index % numColumns === numColumns - 1
-      ? { marginRight: 0 }
-      : { marginRight: 12 };
-
     if ('placeholder' in item && item.placeholder) {
+      const itemStyle = index % numColumns === numColumns - 1
+        ? { marginRight: 0 }
+        : { marginRight: 12 };
       return <View style={[styles.card, styles.placeholderCard, itemStyle, { width: cardSize, height: cardSize }]} />;
     }
 
     const note = item as Note;
+
+    // List view: single-column compact rows, no swipe-to-delete on the row
+    // itself (swipe still works from inside the note modals).
+    if (isListView) {
+      return (
+        <NoteListRow
+          note={note}
+          onEdit={() => (note.tabId === 'trash' ? openReadOnly(note) : editNote(note))}
+          onLongPress={() => openViewOnlyModal(note)}
+        />
+      );
+    }
+
+    const itemStyle = index % numColumns === numColumns - 1
+      ? { marginRight: 0 }
+      : { marginRight: 12 };
 
     return (
       <View style={itemStyle}>
@@ -567,8 +588,10 @@ const MainScreen = () => {
     return sorted;
   })();
 
+  // Placeholder tiles only make sense to pad out a multi-column grid — a
+  // single-column list never needs filler cells.
   const cardSize = getCardSize(numColumns);
-  const placeholdersNeeded = (numColumns - (baseNotes.length % numColumns)) % numColumns;
+  const placeholdersNeeded = isListView ? 0 : (numColumns - (baseNotes.length % numColumns)) % numColumns;
   const displayedNotes: DisplayNote[] = [...baseNotes];
   for (let i = 0; i < placeholdersNeeded; i += 1) {
     displayedNotes.push({ id: `placeholder-${i}`, placeholder: true });
@@ -669,11 +692,11 @@ const MainScreen = () => {
 
         <View style={styles.mainContentArea}>
           <FlatList
-            key={`grid-${numColumns}`}
+            key={`grid-${settings.viewMode}-${numColumns}`}
             data={displayedNotes}
             keyExtractor={item => item.id}
             numColumns={numColumns}
-            columnWrapperStyle={styles.noteGrid}
+            columnWrapperStyle={isListView ? undefined : styles.noteGrid}
             contentContainerStyle={styles.listContent}
             renderItem={renderItem}
             ListEmptyComponent={
