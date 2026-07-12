@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   gridColumns: 2,
   sortOrder: 'manual',
   showDiscardConfirmation: true,
+  restoreChecklistState: true,
   stickieStyles: [],
   defaultStyleId: undefined,
   defaultTabId: 'all',
@@ -81,6 +82,11 @@ const MainScreen = () => {
   const [selectedLineSpacing, setSelectedLineSpacing] = useState<number>(DEFAULT_LINE_SPACING);
   const [selectedChecklistSort, setSelectedChecklistSort] = useState<ChecklistSort>('as-is');
   const [selectedChecklistTextMode, setSelectedChecklistTextMode] = useState<ChecklistTextMode>('single');
+  // Last-known checklist state (order + checked status) for the note being
+  // edited, captured whenever its content type leaves 'checklist'. Lets
+  // switching back restore it instead of starting from scratch — see
+  // NoteModal's contentType-conversion effect.
+  const [checklistSnapshot, setChecklistSnapshot] = useState<ChecklistItem[] | undefined>(undefined);
   const [tabs, setTabs] = useState<Tab[]>([
     { id: 'all', name: 'All', color: ALL_TAB_COLOR },
     { id: 'general', name: 'General', color: GENERAL_TAB_COLOR },
@@ -266,6 +272,7 @@ const MainScreen = () => {
     setSelectedLineSpacing(DEFAULT_LINE_SPACING);
     setSelectedChecklistSort('as-is');
     setSelectedChecklistTextMode('single');
+    setChecklistSnapshot(undefined);
     setShowModal(true);
   };
 
@@ -316,6 +323,7 @@ const MainScreen = () => {
     setSelectedLineSpacing(note.lineSpacing ?? DEFAULT_LINE_SPACING);
     setSelectedChecklistSort(note.checklistSort || 'as-is');
     setSelectedChecklistTextMode(note.checklistTextMode || 'single');
+    setChecklistSnapshot(note.checklistSnapshot);
     setShowModal(true);
   };
 
@@ -396,6 +404,7 @@ const MainScreen = () => {
               lineSpacing: selectedLineSpacing,
               checklistSort: selectedChecklistSort,
               checklistTextMode: selectedChecklistTextMode,
+              checklistSnapshot,
             }
           : note
       ));
@@ -419,6 +428,7 @@ const MainScreen = () => {
         lineSpacing: selectedLineSpacing,
         checklistSort: selectedChecklistSort,
         checklistTextMode: selectedChecklistTextMode,
+        checklistSnapshot,
       };
       setNotes([newNote, ...notes]);
     }
@@ -535,7 +545,13 @@ const MainScreen = () => {
     );
   };
 
-  const rawBaseNotes = activeTabId === 'all' ? notes : notes.filter(n => n.tabId === activeTabId);
+  // "All" aggregates every normal tab, but Trash and Archived are their own
+  // dedicated views — a note swiped into either should disappear from "All"
+  // (and every other normal tab) just like it already does from its
+  // original tab, only reappearing under Trash/Archived themselves.
+  const rawBaseNotes = activeTabId === 'all'
+    ? notes.filter(n => n.tabId !== 'trash' && n.tabId !== 'archived')
+    : notes.filter(n => n.tabId === activeTabId);
 
   const baseNotes = (() => {
     const s = settings.sortOrder;
@@ -728,6 +744,9 @@ const MainScreen = () => {
         onChecklistSortChange={setSelectedChecklistSort}
         selectedChecklistTextMode={selectedChecklistTextMode}
         onChecklistTextModeChange={setSelectedChecklistTextMode}
+        restoreChecklistState={settings.restoreChecklistState}
+        checklistSnapshot={checklistSnapshot}
+        onChecklistSnapshotChange={setChecklistSnapshot}
         showDiscardConfirmation={settings.showDiscardConfirmation}
         onDisableDiscardConfirmation={() => updateSettings({ showDiscardConfirmation: false })}
         onSave={saveNote}
@@ -777,6 +796,8 @@ const MainScreen = () => {
         onChecklistSortChange={() => {}}
         selectedChecklistTextMode={viewOnlyNote?.checklistTextMode || 'single'}
         onChecklistTextModeChange={() => {}}
+        restoreChecklistState={settings.restoreChecklistState}
+        checklistSnapshot={viewOnlyNote?.checklistSnapshot}
         onSave={() => {}}
         onCancel={closeViewOnlyModal}
         showDiscardConfirmation={false}

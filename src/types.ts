@@ -32,6 +32,10 @@ export interface AppSettings {
   gridColumns: 2 | 3;
   sortOrder: SortOrder;
   showDiscardConfirmation: boolean;
+  // When true (default), switching a note's content type away from checklist
+  // and back again restores the previous items' checked state and order
+  // instead of rebuilding a fresh, all-unchecked checklist from the text.
+  restoreChecklistState: boolean;
   stickieStyles: StickieStyle[];
   defaultStyleId?: string;
   defaultTabId?: string;
@@ -94,6 +98,11 @@ export interface Note {
   // swipe-right (restore/unarchive) can put it back where it came from
   // instead of always dropping it into General.
   previousTabId?: string;
+  // Snapshot of the checklist items (order + checked state) captured the
+  // last time this note's content type was switched away from checklist.
+  // Lets switching back to checklist later restore that state instead of
+  // rebuilding a fresh, all-unchecked list from the plain text.
+  checklistSnapshot?: ChecklistItem[];
 }
 
 export type DisplayNote = Note | { id: string; placeholder: true };

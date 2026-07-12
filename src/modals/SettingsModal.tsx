@@ -405,11 +405,19 @@ const SettingsModal = ({
           {/* ── PREFERENCES ── */}
           <SectionHeader label="Preferences" />
           <SectionCard>
-            <Row last>
+            <Row>
               <RowLabel label="Confirm style discards" hint="Show confirmation when tapping ✕ in the styling bar" />
               <NeuToggle
                 value={settings.showDiscardConfirmation}
                 onValueChange={(v) => onUpdateSettings({ showDiscardConfirmation: v })}
+                isDark={isDark}
+              />
+            </Row>
+            <Row last>
+              <RowLabel label="Restore checklist state" hint="Keep checked items and their order when switching a note back to checklist" />
+              <NeuToggle
+                value={settings.restoreChecklistState}
+                onValueChange={(v) => onUpdateSettings({ restoreChecklistState: v })}
                 isDark={isDark}
               />
             </Row>
