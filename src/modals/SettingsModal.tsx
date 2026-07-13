@@ -57,6 +57,7 @@ const SettingsModal = ({
   const [draftTextStyle, setDraftTextStyle] = useState<TextStyle>('normal');
   const [draftContentType, setDraftContentType] = useState<ContentType>('text');
   const [draftUseSvgBackground, setDraftUseSvgBackground] = useState(false);
+  const [draftBackgroundImageUrl, setDraftBackgroundImageUrl] = useState<string | undefined>(undefined);
   const [draftMargins, setDraftMargins] = useState<NoteMargins>(DEFAULT_MARGINS);
   const [draftItemSpacing, setDraftItemSpacing] = useState<ItemSpacing>(DEFAULT_ITEM_SPACING);
   const [draftLineSpacing, setDraftLineSpacing] = useState<number>(DEFAULT_LINE_SPACING);
@@ -119,6 +120,7 @@ const SettingsModal = ({
     setDraftTextStyle('normal');
     setDraftContentType('text');
     setDraftUseSvgBackground(false);
+    setDraftBackgroundImageUrl(undefined);
     setDraftMargins(DEFAULT_MARGINS);
     setDraftItemSpacing(DEFAULT_ITEM_SPACING);
     setDraftLineSpacing(DEFAULT_LINE_SPACING);
@@ -142,6 +144,7 @@ const SettingsModal = ({
       textStyle: draftTextStyle,
       contentType: draftContentType,
       useSvgBackground: draftUseSvgBackground,
+      backgroundImageUrl: draftBackgroundImageUrl,
       margins: draftMargins,
       itemSpacing: draftItemSpacing,
       lineSpacing: draftLineSpacing,
@@ -176,6 +179,7 @@ const SettingsModal = ({
     setDraftTextStyle(style.textStyle);
     setDraftContentType(style.contentType);
     setDraftUseSvgBackground(style.useSvgBackground);
+    setDraftBackgroundImageUrl(style.backgroundImageUrl);
     setDraftMargins(style.margins || DEFAULT_MARGINS);
     setDraftItemSpacing(style.itemSpacing || DEFAULT_ITEM_SPACING);
     setDraftLineSpacing(style.lineSpacing ?? DEFAULT_LINE_SPACING);
@@ -272,7 +276,7 @@ const SettingsModal = ({
           <View style={{ width: 50 }} />
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false}>
 
           {/* ── APPEARANCE ── */}
           <SectionHeader label="Appearance" />
@@ -598,6 +602,8 @@ const SettingsModal = ({
           useSvgBackground={draftUseSvgBackground}
           onUseSvgBackgroundChange={setDraftUseSvgBackground}
           svgFrameId={draftUseSvgBackground ? FRAME_IDS[0] : undefined}
+          backgroundImageUrl={draftBackgroundImageUrl}
+          onBackgroundImageUrlChange={setDraftBackgroundImageUrl}
           selectedMargins={draftMargins}
           onMarginsChange={setDraftMargins}
           selectedItemSpacing={draftItemSpacing}

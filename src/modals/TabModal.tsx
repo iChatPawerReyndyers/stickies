@@ -3,6 +3,7 @@ import {
   Modal,
   View,
   Text,
+  Image,
   TouchableOpacity,
   Pressable,
   TextInput,
@@ -11,12 +12,21 @@ import {
 } from 'react-native';
 import { Tab } from '../types';
 import { getHexInputValue, normalizeHexColor } from '../utils/color';
+import { resolveImageUrl } from '../utils/googleDriveImage';
 
 type TabModalProps = {
   visible: boolean;
   editing: Tab | null;
   tabs: Tab[];
-  onSave: (id: string | undefined, name: string, color: string | undefined, afterTabId?: string, textColor?: string) => void;
+  onSave: (
+    id: string | undefined,
+    name: string,
+    color: string | undefined,
+    afterTabId?: string,
+    textColor?: string,
+    backgroundImageUrl?: string,
+    screenBackgroundImageUrl?: string,
+  ) => void;
   onDelete: (id?: string) => void;
   onCancel: () => void;
 };
@@ -28,6 +38,8 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabMod
   const [name, setName] = useState(editing?.name || '');
   const [colorHex, setColorHex] = useState(getHexInputValue(editing?.color));
   const [textColorHex, setTextColorHex] = useState(getHexInputValue(editing?.textColor));
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState(editing?.backgroundImageUrl || '');
+  const [screenBackgroundImageUrl, setScreenBackgroundImageUrl] = useState(editing?.screenBackgroundImageUrl || '');
   const [afterTabId, setAfterTabId] = useState<string | undefined>(editing?.id ? undefined : 'general');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -35,6 +47,8 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabMod
     setName(editing?.name || '');
     setColorHex(getHexInputValue(editing?.color));
     setTextColorHex(getHexInputValue(editing?.textColor));
+    setBackgroundImageUrl(editing?.backgroundImageUrl || '');
+    setScreenBackgroundImageUrl(editing?.screenBackgroundImageUrl || '');
     setAfterTabId(editing ? undefined : 'general');
     setIsDropdownOpen(false);
   }, [editing, visible]);
@@ -52,13 +66,23 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabMod
     const trimmedName = name.trim() || 'New';
     const finalColor = normalizeHexColor(colorHex.trim()) || undefined;
     const finalTextColor = normalizeHexColor(textColorHex.trim()) || undefined;
-    onSave(editing?.id, trimmedName, finalColor, afterTabId, finalTextColor);
+    onSave(
+      editing?.id,
+      trimmedName,
+      finalColor,
+      afterTabId,
+      finalTextColor,
+      backgroundImageUrl.trim() || undefined,
+      screenBackgroundImageUrl.trim() || undefined,
+    );
   };
 
   // Live swatch preview — falls back to the tab's existing color, or a neutral
   // placeholder for a brand-new tab with nothing typed yet.
   const previewColor = normalizeHexColor(colorHex) || editing?.color || '#CCCCCC';
   const previewTextColor = normalizeHexColor(textColorHex) || editing?.textColor || '#FFFFFF';
+  const resolvedPreviewImage = resolveImageUrl(backgroundImageUrl);
+  const resolvedScreenPreviewImage = resolveImageUrl(screenBackgroundImageUrl);
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
@@ -70,7 +94,7 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabMod
 
           <View style={modalStyles.dividerLine} />
 
-          <ScrollView contentContainerStyle={modalStyles.formBody} bounces={false}>
+          <ScrollView contentContainerStyle={modalStyles.formBody} bounces={false} showsVerticalScrollIndicator={false}>
             <View style={modalStyles.formGroup}>
               <Text style={modalStyles.itemLabel}>name</Text>
               <TextInput
@@ -86,7 +110,11 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabMod
             <View style={modalStyles.formGroup}>
               <Text style={modalStyles.itemLabel}>background</Text>
               <View style={modalStyles.colorRow}>
-                <View style={[modalStyles.colorSwatch, { backgroundColor: previewColor }]} />
+                <View style={[modalStyles.colorSwatch, { backgroundColor: previewColor, overflow: 'hidden' }]}>
+                  {!!resolvedPreviewImage && (
+                    <Image source={{ uri: resolvedPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  )}
+                </View>
                 <TextInput
                   style={[modalStyles.textInput, modalStyles.colorInput]}
                   placeholder="e.g. FF5733"
@@ -95,6 +123,48 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabMod
                   onChangeText={handleColorChange}
                   maxLength={8}
                   autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={modalStyles.formGroup}>
+              <Text style={modalStyles.itemLabel}>tab label image</Text>
+              <Text style={modalStyles.itemHint}>Shown behind the tab pill itself. Google Drive link ("Anyone with the link") or any public image URL. Overrides the color above.</Text>
+              <View style={modalStyles.colorRow}>
+                {!!resolvedPreviewImage && (
+                  <View style={[modalStyles.colorSwatch, { overflow: 'hidden' }]}>
+                    <Image source={{ uri: resolvedPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  </View>
+                )}
+                <TextInput
+                  style={[modalStyles.textInput, modalStyles.colorInput]}
+                  placeholder="Paste a link…"
+                  placeholderTextColor="#C7C7CC"
+                  value={backgroundImageUrl}
+                  onChangeText={setBackgroundImageUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={modalStyles.formGroup}>
+              <Text style={modalStyles.itemLabel}>main screen background image</Text>
+              <Text style={modalStyles.itemHint}>Shown as the app's wallpaper behind the notes grid whenever this tab is open. Independent of the tab label image above — set one, both, or neither.</Text>
+              <View style={modalStyles.colorRow}>
+                {!!resolvedScreenPreviewImage && (
+                  <View style={[modalStyles.colorSwatch, { overflow: 'hidden' }]}>
+                    <Image source={{ uri: resolvedScreenPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  </View>
+                )}
+                <TextInput
+                  style={[modalStyles.textInput, modalStyles.colorInput]}
+                  placeholder="Paste a link…"
+                  placeholderTextColor="#C7C7CC"
+                  value={screenBackgroundImageUrl}
+                  onChangeText={setScreenBackgroundImageUrl}
+                  autoCapitalize="none"
                   autoCorrect={false}
                 />
               </View>
@@ -231,6 +301,12 @@ const modalStyles = StyleSheet.create({
     fontWeight: '600',
     color: '#1C1C1E',
     marginBottom: 6,
+  },
+  itemHint: {
+    fontSize: 11,
+    color: '#8E8E93',
+    marginBottom: 6,
+    lineHeight: 15,
   },
   textInput: {
     height: 42,

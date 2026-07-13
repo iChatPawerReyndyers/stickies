@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, GestureResponderEvent } from 'react-native';
+import { View, Text, Image, GestureResponderEvent } from 'react-native';
 import { Note, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING } from '../types';
 import styles, { CARD_SIZE } from '../styles';
 import { FRAME_COMPONENTS } from '../frames';
 import { NeuPressable } from '../components/Neumorphic';
 import { NEU_RADIUS } from '../theme/neumorphic';
+import { resolveImageUrl } from '../utils/googleDriveImage';
 
 type NoteCardProps = {
   note: Note;
@@ -141,10 +142,15 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
     ? FRAME_COMPONENTS[note.svgFrameId]
     : null;
 
+  // Image background loses to the SVG frame if both are somehow set (mirrors
+  // the mutual-exclusivity the styling bar enforces), so it's only resolved
+  // when there's no frame to draw instead.
+  const resolvedImageUrl = !FrameComponent ? resolveImageUrl(note.backgroundImageUrl) : undefined;
+
   return (
     <NeuPressable
       radius={NEU_RADIUS.lg}
-      backgroundColor={FrameComponent ? 'transparent' : note.color}
+      backgroundColor={(FrameComponent || resolvedImageUrl) ? 'transparent' : note.color}
       style={{ width: size, height: size, padding: 12, overflow: 'hidden' }}
       onPress={onEdit}
       onLongPress={onLongPress}
@@ -155,6 +161,16 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
           <View style={styles.cardSvgBackground} pointerEvents="none">
             <FrameComponent size={size} />
           </View>
+          <View style={styles.cardSvgBlurOverlay} pointerEvents="none" />
+        </>
+      )}
+      {resolvedImageUrl && (
+        <>
+          <Image
+            source={{ uri: resolvedImageUrl }}
+            style={styles.cardSvgBackground}
+            resizeMode="cover"
+          />
           <View style={styles.cardSvgBlurOverlay} pointerEvents="none" />
         </>
       )}

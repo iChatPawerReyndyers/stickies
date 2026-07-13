@@ -7,7 +7,7 @@
 // ScrollView) is left alone since the gesture only claims the responder
 // when the drag is clearly more horizontal than vertical.
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Animated, PanResponder, View, Text, StyleSheet } from 'react-native';
 import { NEU_DANGER } from '../theme/neumorphic';
 
@@ -33,10 +33,21 @@ const SwipeToAction: React.FC<SwipeToActionProps> = ({
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
 
+  // PanResponder.create() below runs exactly once (it's the useRef
+  // initializer), so its callbacks close over whatever `enabled` was on
+  // that very first render — later prop updates (e.g. the styling bar
+  // opening, or the keyboard appearing) would otherwise never be seen by
+  // onMoveShouldSetPanResponder. Mirroring the latest value into a ref and
+  // reading the ref inside the callback keeps the gesture check live.
+  const enabledRef = useRef(enabled);
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) =>
-        enabled && Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+        enabledRef.current && Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
       onPanResponderMove: (_, gesture) => {
         translateX.setValue(gesture.dx);
       },

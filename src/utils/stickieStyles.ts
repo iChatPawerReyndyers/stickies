@@ -10,6 +10,7 @@ export const createStickieStyle = ({
   contentType,
   useSvgBackground,
   svgFrameId,
+  backgroundImageUrl,
   margins,
   itemSpacing,
   lineSpacing,
@@ -25,6 +26,7 @@ export const createStickieStyle = ({
   contentType: ContentType;
   useSvgBackground: boolean;
   svgFrameId?: string;
+  backgroundImageUrl?: string;
   margins?: NoteMargins;
   itemSpacing?: ItemSpacing;
   lineSpacing?: number;
@@ -41,6 +43,7 @@ export const createStickieStyle = ({
   contentType,
   useSvgBackground,
   svgFrameId,
+  backgroundImageUrl,
   margins,
   itemSpacing,
   lineSpacing,

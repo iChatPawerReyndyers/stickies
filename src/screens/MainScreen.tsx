@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   FlatList,
   TouchableOpacity,
   ScrollView,
   Alert,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -33,6 +35,7 @@ import { getRandomFrameId } from '../frames';
 import { NeuView, NeuPressable } from '../components/Neumorphic';
 import { NEU_ACCENT } from '../theme/neumorphic';
 import { darkenColor } from '../utils/color';
+import { resolveImageUrl } from '../utils/googleDriveImage';
 
 const NOTES_KEY = '@sticky_notes_notes_v1';
 const TABS_KEY = '@sticky_notes_tabs_v1';
@@ -81,6 +84,7 @@ const MainScreen = () => {
   const [selectedTextStyle, setSelectedTextStyle] = useState<TextStyle>('normal');
   const [useSvgBackground, setUseSvgBackground] = useState(false);
   const [svgFrameId, setSvgFrameId] = useState<string | undefined>(undefined);
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | undefined>(undefined);
   const [selectedMargins, setSelectedMargins] = useState<NoteMargins>(DEFAULT_MARGINS);
   const [selectedItemSpacing, setSelectedItemSpacing] = useState<ItemSpacing>(DEFAULT_ITEM_SPACING);
   const [selectedLineSpacing, setSelectedLineSpacing] = useState<number>(DEFAULT_LINE_SPACING);
@@ -276,6 +280,7 @@ const MainScreen = () => {
     setSelectedTextStyle('normal');
     setUseSvgBackground(false);
     setSvgFrameId(undefined);
+    setBackgroundImageUrl(undefined);
     setSelectedMargins(DEFAULT_MARGINS);
     setSelectedItemSpacing(DEFAULT_ITEM_SPACING);
     setSelectedLineSpacing(DEFAULT_LINE_SPACING);
@@ -327,6 +332,7 @@ const MainScreen = () => {
     setSelectedTextStyle(note.textStyle);
     setUseSvgBackground(note.useSvgBackground || false);
     setSvgFrameId(note.svgFrameId);
+    setBackgroundImageUrl(note.backgroundImageUrl);
     setSelectedMargins(note.margins || DEFAULT_MARGINS);
     setSelectedItemSpacing(note.itemSpacing || DEFAULT_ITEM_SPACING);
     setSelectedLineSpacing(note.lineSpacing ?? DEFAULT_LINE_SPACING);
@@ -336,7 +342,15 @@ const MainScreen = () => {
     setShowModal(true);
   };
 
-  const saveTab = (id: string | undefined, name: string, color: string | undefined, afterTabId?: string, textColor?: string) => {
+  const saveTab = (
+    id: string | undefined,
+    name: string,
+    color: string | undefined,
+    afterTabId?: string,
+    textColor?: string,
+    backgroundImageUrl?: string,
+    screenBackgroundImageUrl?: string,
+  ) => {
     if (!name.trim()) return;
 
     const insertAfter = (list: Tab[], item: Tab, afterId?: string) => {
@@ -356,7 +370,9 @@ const MainScreen = () => {
 
     if (id) {
       setTabs(prevTabs => {
-        const updatedTab = prevTabs.map(t => (t.id === id ? { ...t, name, color: color || t.color, textColor: textColor || t.textColor } : t));
+        const updatedTab = prevTabs.map(t => (t.id === id
+          ? { ...t, name, color: color || t.color, textColor: textColor || t.textColor, backgroundImageUrl, screenBackgroundImageUrl }
+          : t));
         if (afterTabId && afterTabId !== id) {
           const tab = updatedTab.find(t => t.id === id);
           if (!tab) return updatedTab;
@@ -365,7 +381,14 @@ const MainScreen = () => {
         return updatedTab;
       });
     } else {
-      const newTab: Tab = { id: Date.now().toString(), name, color: color || getNextTabColor(tabs), textColor: textColor || '#FFFFFF' };
+      const newTab: Tab = {
+        id: Date.now().toString(),
+        name,
+        color: color || getNextTabColor(tabs),
+        textColor: textColor || '#FFFFFF',
+        backgroundImageUrl,
+        screenBackgroundImageUrl,
+      };
       setTabs(prevTabs => insertAfter(prevTabs, newTab, afterTabId));
       setActiveTabId(newTab.id);
     }
@@ -408,6 +431,7 @@ const MainScreen = () => {
               tabId: editingNote.tabId || 'all',
               useSvgBackground,
               svgFrameId: useSvgBackground ? svgFrameId : undefined,
+              backgroundImageUrl,
               margins: selectedMargins,
               itemSpacing: selectedItemSpacing,
               lineSpacing: selectedLineSpacing,
@@ -432,6 +456,7 @@ const MainScreen = () => {
         tabId: activeTabId || 'all',
         useSvgBackground,
         svgFrameId: useSvgBackground ? svgFrameId : undefined,
+        backgroundImageUrl,
         margins: selectedMargins,
         itemSpacing: selectedItemSpacing,
         lineSpacing: selectedLineSpacing,
@@ -601,6 +626,12 @@ const MainScreen = () => {
   const noteModalTabName = tabs.find(t => t.id === noteModalTabId)?.name || 'General';
   const viewOnlyTabName = tabs.find(t => t.id === viewOnlyNote?.tabId)?.name || 'General';
 
+  // Wallpaper behind the notes grid — independent of the active tab's own
+  // pill image (tab.backgroundImageUrl), and only present when that tab
+  // was explicitly given one.
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  const resolvedScreenBgImage = resolveImageUrl(activeTab?.screenBackgroundImageUrl);
+
   return (
     <SafeAreaView style={[styles.container, settings.theme === 'dark' && { backgroundColor: '#1C1C1E' }]}>
       <View style={[styles.header, styles.headerSpacing]}>
@@ -623,13 +654,24 @@ const MainScreen = () => {
         >
           {nonTrashTabs.map(tab => {
             const isActive = activeTabId === tab.id;
+            // Resolved image sits on top of the flat color, which stays
+            // underneath as the load/failure fallback (and still drives the
+            // darken-on-active tint via NeuView's backgroundColor).
+            const resolvedTabImage = resolveImageUrl(tab.backgroundImageUrl);
             return (
               <View key={tab.id} style={styles.tabPillGroup}>
                 <NeuView
                   radius={16}
                   backgroundColor={isActive ? darkenColor(tab.color) : tab.color}
-                  style={{ width: 32, height: 80, marginBottom: 4 }}
+                  style={{ width: 32, height: 80, marginBottom: 4, overflow: 'hidden' }}
                 >
+                  {!!resolvedTabImage && (
+                    <Image
+                      source={{ uri: resolvedTabImage }}
+                      style={[StyleSheet.absoluteFill, isActive && { opacity: 0.55 }]}
+                      resizeMode="cover"
+                    />
+                  )}
                   <TouchableOpacity
                     activeOpacity={0.8}
                     style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
@@ -666,8 +708,15 @@ const MainScreen = () => {
               <NeuView
                 radius={16}
                 backgroundColor={activeTabId === trashTab.id ? darkenColor(trashTab.color) : trashTab.color}
-                style={{ width: 32, height: 80 }}
+                style={{ width: 32, height: 80, overflow: 'hidden' }}
               >
+                {!!resolveImageUrl(trashTab.backgroundImageUrl) && (
+                  <Image
+                    source={{ uri: resolveImageUrl(trashTab.backgroundImageUrl) }}
+                    style={[StyleSheet.absoluteFill, activeTabId === trashTab.id && { opacity: 0.55 }]}
+                    resizeMode="cover"
+                  />
+                )}
                 <TouchableOpacity
                   activeOpacity={0.8}
                   style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
@@ -691,6 +740,25 @@ const MainScreen = () => {
         </ScrollView>
 
         <View style={styles.mainContentArea}>
+          {!!resolvedScreenBgImage && (
+            <>
+              <Image
+                source={{ uri: resolvedScreenBgImage }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
+              {/* Keeps card text/icons readable over a busy photo without
+                  hiding it entirely — tints toward white in light mode and
+                  black in dark mode, matching whichever theme is active. */}
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  { backgroundColor: settings.theme === 'dark' ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)' },
+                ]}
+                pointerEvents="none"
+              />
+            </>
+          )}
           <FlatList
             key={`grid-${settings.viewMode}-${numColumns}`}
             data={displayedNotes}
@@ -758,6 +826,8 @@ const MainScreen = () => {
           setSvgFrameId(value ? getRandomFrameId() : undefined);
         }}
         svgFrameId={svgFrameId}
+        backgroundImageUrl={backgroundImageUrl}
+        onBackgroundImageUrlChange={setBackgroundImageUrl}
         selectedMargins={selectedMargins}
         onMarginsChange={setSelectedMargins}
         selectedItemSpacing={selectedItemSpacing}
@@ -810,6 +880,8 @@ const MainScreen = () => {
         useSvgBackground={viewOnlyNote?.useSvgBackground || false}
         onUseSvgBackgroundChange={() => {}}
         svgFrameId={viewOnlyNote?.svgFrameId}
+        backgroundImageUrl={viewOnlyNote?.backgroundImageUrl}
+        onBackgroundImageUrlChange={() => {}}
         selectedMargins={viewOnlyNote?.margins || DEFAULT_MARGINS}
         onMarginsChange={() => {}}
         selectedItemSpacing={viewOnlyNote?.itemSpacing || DEFAULT_ITEM_SPACING}

@@ -4,23 +4,23 @@ import { NEU_NOTE_COLORS, NEU_ACCENT } from './theme/neumorphic';
 // Bright, saturated note colors — designed to sit inside a NeuView so the
 // soft dual-shadow still reads even though the fill itself is colorful.
 export const COLORS = NEU_NOTE_COLORS;
-export const TEXT_COLORS = ['#3A3F4B', '#000000', '#FFFFFF', '#4A4A4A', '#D32F2F', '#1976D2', '#2E7D32', '#7B1FA2'];
+export const TEXT_COLORS = ['#3A3F4B', '#000000', '#FFFFFF', '#4A4A4A', '#D32F2F', '#1976D2', '#2E7D32', '#7B1FA2', '#F5A623', '#00796B'];
 export const FONTS = Platform.OS === 'ios'
   ? [
       { name: 'System', value: 'System' },
-      { name: 'Arial', value: 'Arial' },
-      { name: 'Georgia', value: 'Georgia' },
+      { name: 'Palatino', value: 'Palatino' },
       { name: 'Times New Roman', value: 'Times New Roman' },
       { name: 'Courier', value: 'Courier' },
-      { name: 'Menlo', value: 'Menlo' },
-      { name: 'Palatino', value: 'Palatino' },
-      { name: 'Helvetica', value: 'Helvetica' },
+      { name: 'Cursive', value: 'Snell Roundhand' },
     ]
   : [
-      { name: 'Sans Serif', value: 'sans-serif' },
-      { name: 'Serif', value: 'serif' },
-      { name: 'Monospace', value: 'monospace' },
-      { name: 'Roboto', value: 'Roboto' },
+      // Android has no bundled Palatino/Times New Roman — both fall back to
+      // its generic 'serif' family, which is the closest available match.
+      { name: 'System', value: 'sans-serif' },
+      { name: 'Palatino', value: 'serif' },
+      { name: 'Times New Roman', value: 'serif' },
+      { name: 'Courier', value: 'monospace' },
+      { name: 'Cursive', value: 'cursive' },
     ];
 
 // Cycled through automatically whenever a new (non-built-in) tab is created,

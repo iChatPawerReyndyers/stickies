@@ -19,6 +19,10 @@ export interface StickieStyle {
   contentType: ContentType;
   useSvgBackground: boolean;
   svgFrameId?: string;
+  // Public image URL (or Google Drive share link — see
+  // utils/googleDriveImage.ts) used as the note's background instead of a
+  // flat color. Takes a back seat to useSvgBackground when both are set.
+  backgroundImageUrl?: string;
   margins?: NoteMargins;
   itemSpacing?: ItemSpacing;
   lineSpacing?: number;
@@ -90,6 +94,10 @@ export interface Note {
   tabId: string;
   useSvgBackground?: boolean;
   svgFrameId?: string;
+  // Public image URL (or Google Drive share link — resolved via
+  // utils/googleDriveImage.ts) used as this note's background. Ignored
+  // whenever useSvgBackground is true (the SVG frame wins).
+  backgroundImageUrl?: string;
   margins?: NoteMargins;
   itemSpacing?: ItemSpacing;
   lineSpacing?: number;
@@ -118,4 +126,14 @@ export interface Tab {
   name: string;
   color: string;
   textColor?: string;
+  // Public image URL (or Google Drive share link — resolved via
+  // utils/googleDriveImage.ts) shown behind the tab pill/label itself,
+  // instead of `color`. `color` stays as the fallback while the image loads
+  // or if it fails, and still drives the darken-on-active tint.
+  backgroundImageUrl?: string;
+  // Separate image shown as the main screen's wallpaper (behind the notes
+  // grid/list) whenever this tab is the active one. Independent of
+  // backgroundImageUrl above — a tab's pill and its screen backdrop can be
+  // two different images, or either can be unset while the other is set.
+  screenBackgroundImageUrl?: string;
 }

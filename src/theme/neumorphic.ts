@@ -41,6 +41,10 @@ export const NEU_NOTE_COLORS = [
   '#B4EAD7', // pastel mint    (was #34D399)
   '#D6CCF9', // pastel violet  (was #A78BFA)
   '#FDE7B3', // pastel yellow  (was #FFD166)
+  '#B2E8E0', // pastel turquoise
+  '#F7C6DE', // pastel rose
+  '#E3D1FB', // pastel lilac
+  '#EAD9C2', // pastel sand
 ];
 
 export const NEU_RADIUS = {

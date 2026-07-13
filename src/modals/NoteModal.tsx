@@ -3,6 +3,7 @@ import {
   Modal,
   View,
   Text,
+  Image,
   TouchableOpacity,
   Pressable,
   TextInput,
@@ -18,10 +19,13 @@ import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, It
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { FRAME_COMPONENTS } from '../frames';
 import SwipeToAction from '../components/SwipeToAction';
+import { resolveImageUrl } from '../utils/googleDriveImage';
+import { NeuView, NeuPressable } from '../components/Neumorphic';
+import { NEU_RADIUS, NEU_ACCENT, NEU_DANGER, getNeuPalette } from '../theme/neumorphic';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
-const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.25);
+const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.32);
 const MODAL_WIDTH = 320;
 const CARD_HORIZONTAL_PADDING = 24;
 const CHECKBOX_SIZE = 26;
@@ -29,8 +33,8 @@ const ROW_GAP = 14;
 const BRUSH_HEIGHT = 24;
 const AVAILABLE_TEXT_ROW_WIDTH =
   MODAL_WIDTH - CARD_HORIZONTAL_PADDING * 2 - CHECKBOX_SIZE - ROW_GAP;
-const MINI_SWATCH = 26;
-const MINI_GAP = 5;
+const MINI_SWATCH = 24;
+const MINI_GAP = 7;
 
 const CHECKBOX_STROKE_COLOR = '#1C1C1E';
 const CHECKBOX_CHECKED_FILL = '#1C1C1E';
@@ -129,6 +133,12 @@ type NoteModalProps = {
   useSvgBackground: boolean;
   onUseSvgBackgroundChange: (value: boolean) => void;
   svgFrameId?: string;
+  // Public image URL (or Google Drive share link) used as the note's
+  // background. Loses to useSvgBackground when both are set — same
+  // mutual-exclusivity the styling bar's swatch grid already enforces
+  // against useSvgBackground.
+  backgroundImageUrl?: string;
+  onBackgroundImageUrlChange?: (url: string) => void;
   selectedMargins: NoteMargins;
   onMarginsChange: (margins: NoteMargins) => void;
   selectedItemSpacing: ItemSpacing;
@@ -174,6 +184,7 @@ interface StylingSnapshot {
   selectedFontSize: number;
   selectedTextStyle: TextStyle;
   useSvgBackground: boolean;
+  backgroundImageUrl: string | undefined;
   selectedMargins: NoteMargins;
   selectedItemSpacing: ItemSpacing;
   selectedLineSpacing: number;
@@ -195,6 +206,7 @@ const NoteModal = ({
   selectedTextStyle, onTextStyleChange,
   useSvgBackground, onUseSvgBackgroundChange,
   svgFrameId,
+  backgroundImageUrl, onBackgroundImageUrlChange,
   selectedMargins, onMarginsChange,
   selectedItemSpacing, onItemSpacingChange,
   selectedLineSpacing, onLineSpacingChange,
@@ -223,6 +235,13 @@ const NoteModal = ({
   // dismissed — otherwise a horizontal drag on the text input would fight
   // with cursor placement / text selection.
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  // Drives the dot pagination indicator under the styling bar's horizontal
+  // scroll strip — tracked as raw pixel measurements rather than a 0-1
+  // fraction so the active-dot math only has to run once, in the render
+  // below, instead of on every scroll event.
+  const [barScrollX, setBarScrollX] = useState(0);
+  const [barViewportWidth, setBarViewportWidth] = useState(0);
+  const [barContentWidth, setBarContentWidth] = useState(0);
 
   // Mirrors the checklistSnapshot prop into a ref so the type-conversion
   // effect below can read/update it synchronously without needing to be a
@@ -239,6 +258,8 @@ const NoteModal = ({
   // a second consecutive Backspace on a still-empty item deletes it.
   const backspacePendingRef = useRef<{ [id: string]: boolean }>({});
 
+  const p = getNeuPalette(false);
+
   // Read-only note content is presented the same way as previewMode's
   // (non-editable) rendering — this just extends that same rendering path.
   const isReadOnlyContent = previewMode || viewOnly;
@@ -251,6 +272,9 @@ const NoteModal = ({
   const items: ChecklistItem[] = Array.isArray(content) ? (content as ChecklistItem[]) : [];
 
   const FrameComponent = useSvgBackground && svgFrameId ? FRAME_COMPONENTS[svgFrameId] : null;
+  // SVG frame wins if both happen to be set (matches the swatch-grid
+  // disabling logic in the styling bar below).
+  const resolvedBgImageUrl = !FrameComponent ? resolveImageUrl(backgroundImageUrl) : undefined;
 
   // Reset styling bar when modal closes
   useEffect(() => {
@@ -427,10 +451,11 @@ const NoteModal = ({
 
   const openStyling = () => {
     Keyboard.dismiss();
+    setBarScrollX(0);
     setStylingSnapshot({
       contentType, content,
       selectedColor, selectedTextColor, selectedFont, selectedFontSize,
-      selectedTextStyle, useSvgBackground, selectedMargins, selectedItemSpacing, selectedLineSpacing, selectedChecklistSort,
+      selectedTextStyle, useSvgBackground, backgroundImageUrl, selectedMargins, selectedItemSpacing, selectedLineSpacing, selectedChecklistSort,
       selectedChecklistTextMode,
       checklistSnapshot: checklistSnapshotRef.current,
     });
@@ -453,6 +478,7 @@ const NoteModal = ({
       onFontSizeChange(stylingSnapshot.selectedFontSize);
       onTextStyleChange(stylingSnapshot.selectedTextStyle);
       onUseSvgBackgroundChange(stylingSnapshot.useSvgBackground);
+      onBackgroundImageUrlChange?.(stylingSnapshot.backgroundImageUrl || '');
       onMarginsChange(stylingSnapshot.selectedMargins);
       onItemSpacingChange(stylingSnapshot.selectedItemSpacing);
       onLineSpacingChange(stylingSnapshot.selectedLineSpacing);
@@ -491,7 +517,7 @@ const NoteModal = ({
           <View
             style={[
               s.card,
-              { backgroundColor: FrameComponent ? 'transparent' : selectedColor },
+              { backgroundColor: (FrameComponent || resolvedBgImageUrl) ? 'transparent' : selectedColor },
               { height: MODAL_HEIGHT },
             ]}
             onStartShouldSetResponder={() => true}
@@ -503,6 +529,18 @@ const NoteModal = ({
                   <FrameComponent size={MODAL_WIDTH} />
                 </View>
                 <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,255,255,0.28)' }]} pointerEvents="none" />
+              </>
+            )}
+
+            {/* Image background — only rendered when there's no SVG frame */}
+            {resolvedBgImageUrl && (
+              <>
+                <Image
+                  source={{ uri: resolvedBgImageUrl }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                />
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,255,255,0.15)' }]} pointerEvents="none" />
               </>
             )}
 
@@ -544,7 +582,7 @@ const NoteModal = ({
                   style={{ flex: 1 }}
                   contentContainerStyle={{ paddingTop: 10 + selectedMargins.top, paddingBottom: 10 + selectedMargins.bottom, paddingLeft: selectedMargins.left, paddingRight: selectedMargins.right }}
                   keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator
+                  showsVerticalScrollIndicator={false}
                 >
                   {displayedChecklistItems.map((item, index) => {
                     if (isReadOnlyContent) {
@@ -671,7 +709,11 @@ const NoteModal = ({
                       underlineColorAndroid="transparent"
                     />
                   ) : (
-                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 12 + selectedMargins.top, paddingBottom: 12 + selectedMargins.bottom, paddingLeft: selectedMargins.left, paddingRight: selectedMargins.right }}>
+                    <ScrollView
+                      style={{ flex: 1 }}
+                      contentContainerStyle={{ paddingTop: 12 + selectedMargins.top, paddingBottom: 12 + selectedMargins.bottom, paddingLeft: selectedMargins.left, paddingRight: selectedMargins.right }}
+                      showsVerticalScrollIndicator={false}
+                    >
                       <Text style={[getTextStyle(), { color: selectedTextColor }]}>{typeof content === 'string' ? content : ''}</Text>
                     </ScrollView>
                   )}
@@ -712,68 +754,117 @@ const NoteModal = ({
         {showStyling && (
           <>
             <View style={barStyles.bottomSheet}>
+              <NeuView radius={20} style={{ height: STYLING_BAR_HEIGHT, width: '100%' }}>
+              <View style={barStyles.barHeader}>
+                <TouchableOpacity onPress={handleXPress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={barStyles.barHeaderClose}>✕</Text>
+                </TouchableOpacity>
+                <Text style={barStyles.barHeaderTitle}>Styling</Text>
+                <TouchableOpacity onPress={saveStyling} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={barStyles.barHeaderDone}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[barStyles.barHeaderDivider, { backgroundColor: `${p.darkShadow}55` }]} />
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={barStyles.scrollContent}
+                style={{ flex: 1 }}
                 keyboardShouldPersistTaps="handled"
+                onLayout={e => setBarViewportWidth(e.nativeEvent.layout.width)}
+                onContentSizeChange={w => setBarContentWidth(w)}
+                onScroll={e => setBarScrollX(e.nativeEvent.contentOffset.x)}
+                scrollEventThrottle={32}
               >
               {/* ── Content Type ── */}
-              <View style={[barStyles.section, { width: 110 }]}>
+              <View style={[barStyles.section, { width: 122 }]}>
                 <Text style={barStyles.sLabel}>Type</Text>
                 {(['text', 'checklist'] as ContentType[]).map(type => (
-                  <TouchableOpacity
+                  <NeuPressable
                     key={type}
-                    style={[barStyles.miniBtn, contentType === type && barStyles.miniBtnActive]}
+                    radius={9}
+                    backgroundColor={contentType === type ? NEU_ACCENT : p.base}
+                    style={{ paddingVertical: 12, alignItems: 'center', marginBottom: 9 }}
                     onPress={() => onContentTypeChange(type)}
                   >
                     <Text style={[barStyles.miniBtnText, contentType === type && barStyles.miniBtnTextActive]}>
                       {type === 'text' ? 'Text' : 'Checklist'}
                     </Text>
-                  </TouchableOpacity>
+                  </NeuPressable>
                 ))}
               </View>
 
               <View style={barStyles.vDivider} />
 
               {/* ── Background ── */}
-              <View style={[barStyles.section, { width: 138 }]}>
+              <View style={[barStyles.section, { width: 194 }]}>
                 <Text style={barStyles.sLabel}>Background</Text>
-                <TouchableOpacity style={barStyles.svgToggle} onPress={() => onUseSvgBackgroundChange(!useSvgBackground)}>
-                  <View style={[barStyles.miniCheck, useSvgBackground && barStyles.miniCheckOn]}>
+                <TouchableOpacity
+                  style={[barStyles.svgToggle, !!resolvedBgImageUrl && barStyles.disabled]}
+                  onPress={() => onUseSvgBackgroundChange(!useSvgBackground)}
+                  disabled={!!resolvedBgImageUrl}
+                >
+                  <NeuView inset={!useSvgBackground} radius={5} backgroundColor={useSvgBackground ? NEU_ACCENT : p.insetBase} style={barStyles.miniCheck}>
                     {useSvgBackground && <Text style={barStyles.miniCheckMark}>✓</Text>}
-                  </View>
+                  </NeuView>
                   <Text style={barStyles.svgToggleText}>SVG Frame</Text>
                 </TouchableOpacity>
                 <View
-                  style={[barStyles.swatchGrid, useSvgBackground && barStyles.disabled]}
-                  pointerEvents={useSvgBackground ? 'none' : 'auto'}
+                  style={[barStyles.swatchGrid, (useSvgBackground || !!backgroundImageUrl) && barStyles.disabled]}
+                  pointerEvents={(useSvgBackground || !!backgroundImageUrl) ? 'none' : 'auto'}
                 >
                   {COLORS.map(color => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[barStyles.swatch, { backgroundColor: color }, selectedColor === color && barStyles.swatchSel]}
-                      onPress={() => onColorChange(color)}
-                    >
-                      {selectedColor === color && <Text style={barStyles.swatchCheck}>✓</Text>}
+                    <TouchableOpacity key={color} onPress={() => onColorChange(color)}>
+                      <NeuView
+                        radius={7}
+                        backgroundColor={color}
+                        style={[
+                          { width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' },
+                          selectedColor === color && barStyles.swatchSel,
+                        ]}
+                      >
+                        {selectedColor === color && <Text style={barStyles.swatchCheck}>✓</Text>}
+                      </NeuView>
                     </TouchableOpacity>
                   ))}
+                </View>
+                <View
+                  style={[useSvgBackground && barStyles.disabled, { marginTop: 8 }]}
+                  pointerEvents={useSvgBackground ? 'none' : 'auto'}
+                >
+                  <Text style={barStyles.imageUrlLabel}>Image URL</Text>
+                  <NeuView inset radius={7}>
+                    <TextInput
+                      style={barStyles.imageUrlInput}
+                      placeholder="Google Drive link or image URL"
+                      placeholderTextColor="#9099AC"
+                      value={backgroundImageUrl || ''}
+                      onChangeText={text => onBackgroundImageUrlChange?.(text)}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </NeuView>
                 </View>
               </View>
 
               <View style={barStyles.vDivider} />
 
               {/* ── Font Color ── */}
-              <View style={[barStyles.section, { width: 148 }]}>
+              <View style={[barStyles.section, { width: 182 }]}>
                 <Text style={barStyles.sLabel}>Font Color</Text>
                 <View style={barStyles.swatchGrid}>
                   {TEXT_COLORS.map(color => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[barStyles.swatch, { backgroundColor: color }, selectedTextColor === color && barStyles.swatchSel]}
-                      onPress={() => onTextColorChange(color)}
-                    >
-                      {selectedTextColor === color && <Text style={barStyles.swatchCheck}>✓</Text>}
+                    <TouchableOpacity key={color} onPress={() => onTextColorChange(color)}>
+                      <NeuView
+                        radius={7}
+                        backgroundColor={color}
+                        style={[
+                          { width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' },
+                          selectedTextColor === color && barStyles.swatchSel,
+                        ]}
+                      >
+                        {selectedTextColor === color && <Text style={barStyles.swatchCheck}>✓</Text>}
+                      </NeuView>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -782,19 +873,21 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Font ── */}
-              <View style={[barStyles.section, { width: 156 }]}>
+              <View style={[barStyles.section, { width: 192 }]}>
                 <Text style={barStyles.sLabel}>Font</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP }}>
                   {FONTS.map(font => (
-                    <TouchableOpacity
+                    <NeuPressable
                       key={font.value}
-                      style={[barStyles.fontChip, selectedFont === font.value && barStyles.miniBtnActive]}
+                      radius={7}
+                      backgroundColor={selectedFont === font.value ? NEU_ACCENT : p.base}
+                      style={[barStyles.fontChip]}
                       onPress={() => onFontChange(font.value)}
                     >
                       <Text style={[barStyles.fontChipText, { fontFamily: font.value }, selectedFont === font.value && barStyles.miniBtnTextActive]} numberOfLines={1} adjustsFontSizeToFit>
                         {font.name}
                       </Text>
-                    </TouchableOpacity>
+                    </NeuPressable>
                   ))}
                 </View>
               </View>
@@ -802,9 +895,9 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Font Size ── */}
-              <View style={[barStyles.section, { width: 106 }]}>
+              <View style={[barStyles.section, { width: 118 }]}>
                 <Text style={barStyles.sLabel}>Size</Text>
-                <View style={barStyles.stepper}>
+                <NeuView inset radius={9} style={barStyles.stepper}>
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(6, selectedFontSize - 2))}>
                     <Text style={barStyles.stepBtnText}>−</Text>
                   </TouchableOpacity>
@@ -812,19 +905,21 @@ const NoteModal = ({
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.min(36, selectedFontSize + 2))}>
                     <Text style={barStyles.stepBtnText}>+</Text>
                   </TouchableOpacity>
-                </View>
+                </NeuView>
               </View>
 
               <View style={barStyles.vDivider} />
 
               {/* ── Text Style ── */}
-              <View style={[barStyles.section, { width: 138 }]}>
+              <View style={[barStyles.section, { width: 172 }]}>
                 <Text style={barStyles.sLabel}>Style</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP }}>
                   {(['normal', 'bold', 'italic', 'underline'] as TextStyle[]).map(style => (
-                    <TouchableOpacity
+                    <NeuPressable
                       key={style}
-                      style={[barStyles.styleChip, selectedTextStyle === style && barStyles.miniBtnActive]}
+                      radius={7}
+                      backgroundColor={selectedTextStyle === style ? NEU_ACCENT : p.base}
+                      style={[barStyles.styleChip]}
                       onPress={() => onTextStyleChange(style)}
                     >
                       <Text
@@ -839,7 +934,7 @@ const NoteModal = ({
                       ]}>
                         {style.charAt(0).toUpperCase() + style.slice(1)}
                       </Text>
-                    </TouchableOpacity>
+                    </NeuPressable>
                   ))}
                 </View>
               </View>
@@ -847,12 +942,12 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Margins ── */}
-              <View style={[barStyles.section, { width: 180 }]}>
+              <View style={[barStyles.section, { width: 208 }]}>
                 <Text style={barStyles.sLabel}>Margins</Text>
                 {(['top', 'bottom', 'left', 'right'] as const).map(side => (
                   <View key={side} style={barStyles.marginRow}>
                     <Text style={barStyles.marginLabel}>{side.charAt(0).toUpperCase() + side.slice(1)}</Text>
-                    <View style={barStyles.stepper}>
+                    <NeuView inset radius={9} style={barStyles.stepper}>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
                         onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.max(0, selectedMargins[side] - 4) })}
@@ -866,7 +961,7 @@ const NoteModal = ({
                       >
                         <Text style={barStyles.stepBtnText}>+</Text>
                       </TouchableOpacity>
-                    </View>
+                    </NeuView>
                   </View>
                 ))}
               </View>
@@ -874,7 +969,7 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Spacing (both types — checklist gets item gaps, text gets line spacing) ── */}
-              <View style={[barStyles.section, { width: contentType === 'checklist' ? 140 : 110 }]}>
+              <View style={[barStyles.section, { width: contentType === 'checklist' ? 168 : 134 }]}>
                 <Text style={barStyles.sLabel}>{contentType === 'checklist' ? 'Item Spacing' : 'Line Spacing'}</Text>
                 {contentType === 'checklist' ? (
                   ([
@@ -883,7 +978,7 @@ const NoteModal = ({
                   ] as { key: keyof ItemSpacing; label: string }[]).map(({ key, label }) => (
                     <View key={key} style={barStyles.marginRow}>
                       <Text style={barStyles.marginLabel}>{label}</Text>
-                      <View style={barStyles.stepper}>
+                      <NeuView inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.max(0, selectedItemSpacing[key] - 2) })}
@@ -897,11 +992,11 @@ const NoteModal = ({
                         >
                           <Text style={barStyles.stepBtnText}>+</Text>
                         </TouchableOpacity>
-                      </View>
+                      </NeuView>
                     </View>
                   ))
                 ) : (
-                  <View style={barStyles.stepper}>
+                  <NeuView inset radius={9} style={barStyles.stepper}>
                     <TouchableOpacity
                       style={barStyles.stepBtn}
                       onPress={() => onLineSpacingChange(Math.max(0, selectedLineSpacing - 2))}
@@ -915,7 +1010,7 @@ const NoteModal = ({
                     >
                       <Text style={barStyles.stepBtnText}>+</Text>
                     </TouchableOpacity>
-                  </View>
+                  </NeuView>
                 )}
               </View>
 
@@ -923,55 +1018,62 @@ const NoteModal = ({
               {contentType === 'checklist' && (
                 <>
                   <View style={barStyles.vDivider} />
-                  <View style={[barStyles.section, { width: 110 }]}>
+                  <View style={[barStyles.section, { width: 122 }]}>
                     <Text style={barStyles.sLabel}>Display</Text>
                     {([
                       { value: 'single', label: 'Line' },
                       { value: 'wrap', label: 'Wrap' },
                     ] as { value: ChecklistTextMode; label: string }[]).map(opt => (
-                      <TouchableOpacity
+                      <NeuPressable
                         key={opt.value}
-                        style={[barStyles.miniBtn, selectedChecklistTextMode === opt.value && barStyles.miniBtnActive]}
+                        radius={9}
+                        backgroundColor={selectedChecklistTextMode === opt.value ? NEU_ACCENT : p.base}
+                        style={{ paddingVertical: 12, alignItems: 'center', marginBottom: 9 }}
                         onPress={() => onChecklistTextModeChange(opt.value)}
                       >
                         <Text style={[barStyles.miniBtnText, { textAlign: 'center' }, selectedChecklistTextMode === opt.value && barStyles.miniBtnTextActive]}>
                           {opt.label}
                         </Text>
-                      </TouchableOpacity>
+                      </NeuPressable>
                     ))}
                   </View>
                   <View style={barStyles.vDivider} />
-                  <View style={[barStyles.section, { width: 124 }]}>
+                  <View style={[barStyles.section, { width: 138 }]}>
                     <Text style={barStyles.sLabel}>Order</Text>
                     {([
                       { value: 'as-is', label: 'As Is' },
                       { value: 'unchecked-first', label: 'Pending First' },
                       { value: 'alphabetical', label: 'A → Z' },
                     ] as { value: ChecklistSort; label: string }[]).map(opt => (
-                      <TouchableOpacity
+                      <NeuPressable
                         key={opt.value}
-                        style={[barStyles.miniBtn, selectedChecklistSort === opt.value && barStyles.miniBtnActive]}
+                        radius={9}
+                        backgroundColor={selectedChecklistSort === opt.value ? NEU_ACCENT : p.base}
+                        style={{ paddingVertical: 12, alignItems: 'center', marginBottom: 9 }}
                         onPress={() => onChecklistSortChange(opt.value)}
                       >
                         <Text style={[barStyles.miniBtnText, { textAlign: 'center' }, selectedChecklistSort === opt.value && barStyles.miniBtnTextActive]}>
                           {opt.label}
                         </Text>
-                      </TouchableOpacity>
+                      </NeuPressable>
                     ))}
                   </View>
                 </>
               )}
             </ScrollView>
+              <View style={barStyles.dotsRow}>
+                {(() => {
+                  const DOT_COUNT = 5;
+                  const maxScroll = Math.max(1, barContentWidth - barViewportWidth);
+                  const progress = Math.min(1, Math.max(0, barScrollX / maxScroll));
+                  const activeDot = Math.min(DOT_COUNT - 1, Math.round(progress * (DOT_COUNT - 1)));
+                  return Array.from({ length: DOT_COUNT }).map((_, i) => (
+                    <View key={i} style={[barStyles.dot, i === activeDot && barStyles.dotActive]} />
+                  ));
+                })()}
+              </View>
+              </NeuView>
           </View>
-
-          {/* ✕ floats at the top-right corner of the bar, outside the scroll area */}
-          <TouchableOpacity
-            style={barStyles.discardBtn}
-            onPress={handleXPress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={barStyles.discardText}>✕</Text>
-          </TouchableOpacity>
           </>
         )}
 
@@ -1094,50 +1196,77 @@ const barStyles = StyleSheet.create({
     left: 24,
     right: 24,
     height: STYLING_BAR_HEIGHT,
-    backgroundColor: '#F8F8F8',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
     overflow: 'hidden',
   },
-  discardBtn: {
-    position: 'absolute',
-    bottom: 24 + STYLING_BAR_HEIGHT - 18,
-    right: 14,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FF3B30',
+  barHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
-  discardText: {
-    fontSize: 14,
-    color: '#FFFFFF',
+  barHeaderClose: {
+    fontSize: 15,
     fontWeight: '700',
+    color: NEU_DANGER,
+    width: 30,
+  },
+  barHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#8891A5',
+  },
+  barHeaderDone: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: NEU_ACCENT,
+    width: 30,
+    textAlign: 'right',
+  },
+  barHeaderDivider: {
+    height: 1,
+    marginHorizontal: 18,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 10,
+  },
+  dot: {
+    width: 5,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#C9D0DC',
+  },
+  dotActive: {
+    width: 16,
+    backgroundColor: NEU_ACCENT,
   },
   scrollContent: {
-    paddingHorizontal: 10,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
     alignItems: 'flex-start',
   },
   section: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
   },
   sLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#8E8E93',
+    color: '#8891A5',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 8,
+    marginBottom: 14,
   },
   vDivider: {
     width: 1,
-    backgroundColor: '#E5E5EA',
+    backgroundColor: '#A6B0C3',
+    opacity: 0.35,
     alignSelf: 'stretch',
-    marginHorizontal: 3,
+    marginHorizontal: 10,
   },
   miniBtn: {
     paddingHorizontal: 10,
@@ -1148,29 +1277,32 @@ const barStyles = StyleSheet.create({
     alignItems: 'center',
   },
   miniBtnActive: { backgroundColor: '#007AFF' },
-  miniBtnText: { fontSize: 14, fontWeight: '500', color: '#3A3A3C' },
-  miniBtnTextActive: { color: '#FFFFFF' },
+  miniBtnText: { fontSize: 14, fontWeight: '500', color: '#3A4358' },
+  miniBtnTextActive: { color: '#FFFFFF', fontWeight: '700' },
   svgToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 7,
+    marginBottom: 12,
   },
   miniCheck: {
     width: 16,
     height: 16,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#C7C7CC',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F2F2F7',
     marginRight: 5,
   },
-  miniCheckOn: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
   miniCheckMark: { fontSize: 9, fontWeight: '700', color: '#FFFFFF' },
-  svgToggleText: { fontSize: 14, color: '#1C1C1E', fontWeight: '500' },
+  svgToggleText: { fontSize: 14, color: '#3A4358', fontWeight: '500' },
   swatchGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP },
   disabled: { opacity: 0.35 },
+  imageUrlLabel: { fontSize: 11, fontWeight: '600', color: '#8891A5', marginBottom: 4 },
+  imageUrlInput: {
+    height: 34,
+    paddingHorizontal: 10,
+    fontSize: 12,
+    color: '#3A4358',
+    width: 170,
+  },
   swatch: {
     width: MINI_SWATCH,
     height: MINI_SWATCH,
@@ -1178,44 +1310,38 @@ const barStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  swatchSel: { borderWidth: 2, borderColor: '#1C1C1E' },
+  swatchSel: { borderWidth: 2, borderColor: '#3A4358' },
   swatchCheck: { fontSize: 10, fontWeight: '700', color: '#1C1C1E' },
   fontChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    borderRadius: 7,
-    backgroundColor: '#EFEFEF',
-    width: 70,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    width: 80,
     alignItems: 'center',
   },
-  fontChipText: { fontSize: 15, color: '#3A3A3C' },
+  fontChipText: { fontSize: 15, color: '#3A4358' },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EFEFEF',
-    borderRadius: 8,
     overflow: 'hidden',
-    marginTop: 5,
+    marginTop: 8,
   },
-  stepBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
-  stepBtnText: { fontSize: 18, fontWeight: '400', color: '#007AFF' },
-  stepVal: { width: 30, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#1C1C1E' },
+  stepBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  stepBtnText: { fontSize: 20, fontWeight: '400', color: '#F5A623' },
+  stepVal: { width: 34, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#3A4358' },
   styleChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    borderRadius: 7,
-    backgroundColor: '#EFEFEF',
-    width: 62,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    width: 72,
     alignItems: 'center',
   },
-  styleChipText: { fontSize: 15, color: '#3A3A3C' },
+  styleChipText: { fontSize: 15, color: '#3A4358' },
   marginRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 8,
   },
-  marginLabel: { fontSize: 15, fontWeight: '500', color: '#3A3A3C', width: 42 },
+  marginLabel: { fontSize: 15, fontWeight: '500', color: '#3A4358', width: 42 },
 });
 
 // ── Discard confirmation overlay styles ───────────────────────────────────────

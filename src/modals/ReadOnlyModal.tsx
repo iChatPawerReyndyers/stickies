@@ -1,8 +1,13 @@
-import React from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { Modal, View, Text, TouchableOpacity, ScrollView, LayoutChangeEvent } from 'react-native';
 import { Note, DEFAULT_LINE_SPACING } from '../types';
 import styles from '../styles';
 import SwipeToAction from '../components/SwipeToAction';
+
+// Fixed bottom padding baked into styles.modalContent — subtracted below so
+// the computed scroll-area height matches the actual space left over after
+// the header, not just the raw card height.
+const MODAL_CONTENT_BOTTOM_PADDING = 20;
 
 type ReadOnlyModalProps = {
   visible: boolean;
@@ -15,6 +20,17 @@ type ReadOnlyModalProps = {
 };
 
 const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore }: ReadOnlyModalProps) => {
+  // Measured pixel heights of the modal card and its header row. The scroll
+  // area previously relied on a flex:1 chain running through SwipeToAction's
+  // Animated.View (which also carries a transform for the swipe gesture) —
+  // that chain doesn't reliably resolve to a bounded height on every RN/
+  // platform combination, which can leave the ScrollView effectively
+  // unconstrained (and therefore not actually scrollable) even though the
+  // flex styles look correct. Measuring both boxes directly and giving the
+  // ScrollView an explicit numeric height sidesteps that entirely.
+  const [containerHeight, setContainerHeight] = useState(0);
+  const [headerHeight, setHeaderHeight] = useState(0);
+
   if (!note) return null;
 
   // Mirrors NoteModal's getTextStyle() so a note looks the same here as it
@@ -57,11 +73,22 @@ const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore }
     );
   };
 
+  const onContainerLayout = (e: LayoutChangeEvent) => setContainerHeight(e.nativeEvent.layout.height);
+  const onHeaderLayout = (e: LayoutChangeEvent) => setHeaderHeight(e.nativeEvent.layout.height);
+
+  // Falls back to flex:1 (the old behavior) until both measurements land on
+  // the first render, then switches to a hard pixel height once we actually
+  // know how much room is left for content.
+  const hasMeasurements = containerHeight > 0 && headerHeight > 0;
+  const scrollAreaStyle = hasMeasurements
+    ? { height: Math.max(0, containerHeight - headerHeight - MODAL_CONTENT_BOTTOM_PADDING) }
+    : { flex: 1 };
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
+        <View style={styles.modalContent} onLayout={onContainerLayout}>
+          <View style={styles.modalHeader} onLayout={onHeaderLayout}>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.modalCloseButton}>← Close</Text>
             </TouchableOpacity>
@@ -75,7 +102,13 @@ const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore }
             leftLabel="Delete Forever"
             rightLabel="Restore"
           >
-            <ScrollView style={styles.modalScroll}>
+            <ScrollView
+              style={[{ paddingHorizontal: 16, paddingTop: 16 }, scrollAreaStyle]}
+              contentContainerStyle={{ paddingBottom: 24 }}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              scrollEnabled
+            >
               <Text style={[styles.label, getTextStyle(), { fontWeight: '700' }]}>{note.title}</Text>
               {renderContent()}
             </ScrollView>
