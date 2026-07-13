@@ -8,9 +8,12 @@ type NoteListRowProps = {
   note: Note;
   onEdit: () => void;
   onLongPress?: (event: GestureResponderEvent) => void;
+  // See NoteCard's prop of the same name — drops the neumorphic shadow when
+  // the active tab has a screen wallpaper behind the list.
+  hasScreenBackgroundImage?: boolean;
 };
 
-const NoteListRow = ({ note, onEdit, onLongPress }: NoteListRowProps) => {
+const NoteListRow = ({ note, onEdit, onLongPress, hasScreenBackgroundImage = false }: NoteListRowProps) => {
   const getSnippet = (): string => {
     if (note.contentType === 'text') {
       return (note.content as string).trim();
@@ -24,6 +27,7 @@ const NoteListRow = ({ note, onEdit, onLongPress }: NoteListRowProps) => {
     <NeuPressable
       radius={NEU_RADIUS.md}
       backgroundColor={note.color}
+      noShadow={hasScreenBackgroundImage}
       style={{ flexDirection: 'row', alignItems: 'center', padding: 14, marginBottom: 10 }}
       onPress={onEdit}
       onLongPress={onLongPress}

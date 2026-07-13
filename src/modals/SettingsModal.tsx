@@ -12,16 +12,14 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
-import { AppSettings, AppTheme, SortOrder, ViewMode, Note, Tab, TextStyle, ContentType, ChecklistItem, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, NoteMargins } from '../types';
+import { AppSettings, AppTheme, SortOrder, ViewMode, Note, Tab } from '../types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
-import NoteModal from './NoteModal';
-import { FRAME_IDS } from '../frames';
-import { createStickieStyle } from '../utils/stickieStyles';
 import { NeuView, NeuPressable, NeuToggle, NeuRadio } from '../components/Neumorphic';
 import PinSetupModal from '../components/PinSetupModal';
+import StickieStyleSection from '../components/StickieStyleSection';
 import { NEU_BASE, NEU_ACCENT, NEU_DANGER, NEU_TEXT_PRIMARY, NEU_TEXT_SECONDARY, NEU_RADIUS, getNeuPalette } from '../theme/neumorphic';
 
 type SettingsModalProps = {
@@ -49,21 +47,6 @@ const SettingsModal = ({
 }: SettingsModalProps) => {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
-  const [showStyleEditor, setShowStyleEditor] = useState(false);
-  const [draftStyleName, setDraftStyleName] = useState('');
-  const [draftColor, setDraftColor] = useState(settings.defaultColor);
-  const [draftTextColor, setDraftTextColor] = useState(settings.defaultTextColor);
-  const [draftFont, setDraftFont] = useState(settings.defaultFont);
-  const [draftFontSize, setDraftFontSize] = useState(settings.defaultFontSize);
-  const [draftTextStyle, setDraftTextStyle] = useState<TextStyle>('normal');
-  const [draftContentType, setDraftContentType] = useState<ContentType>('text');
-  const [draftUseSvgBackground, setDraftUseSvgBackground] = useState(false);
-  const [draftBackgroundImageUrl, setDraftBackgroundImageUrl] = useState<string | undefined>(undefined);
-  const [draftMargins, setDraftMargins] = useState<NoteMargins>(DEFAULT_MARGINS);
-  const [draftItemSpacing, setDraftItemSpacing] = useState<ItemSpacing>(DEFAULT_ITEM_SPACING);
-  const [draftLineSpacing, setDraftLineSpacing] = useState<number>(DEFAULT_LINE_SPACING);
-  const [draftChecklistSort, setDraftChecklistSort] = useState<ChecklistSort>('as-is');
-  const [draftChecklistTextMode, setDraftChecklistTextMode] = useState<ChecklistTextMode>('single');
   // Which PIN flow is currently open: 'create' (turning the lock on for the
   // first time), 'change' (replacing an existing PIN), 'disable' (turning
   // the lock off — still requires verifying the current PIN), or null when
@@ -113,106 +96,6 @@ const SettingsModal = ({
     } catch {
       Alert.alert('Invalid JSON', 'Could not parse the pasted content. Make sure it is a valid Stickies backup.');
     }
-  };
-
-  useEffect(() => {
-    if (!visible) return;
-    setDraftStyleName('');
-    setShowStyleEditor(false);
-    setDraftColor(settings.defaultColor);
-    setDraftTextColor(settings.defaultTextColor);
-    setDraftFont(settings.defaultFont);
-    setDraftFontSize(settings.defaultFontSize);
-    setDraftTextStyle('normal');
-    setDraftContentType('text');
-    setDraftUseSvgBackground(false);
-    setDraftBackgroundImageUrl(undefined);
-    setDraftMargins(DEFAULT_MARGINS);
-    setDraftItemSpacing(DEFAULT_ITEM_SPACING);
-    setDraftLineSpacing(DEFAULT_LINE_SPACING);
-    setDraftChecklistSort('as-is');
-    setDraftChecklistTextMode('single');
-  }, [visible, settings.defaultColor, settings.defaultTextColor, settings.defaultFont, settings.defaultFontSize]);
-
-  const handleSaveStyle = () => {
-    const trimmedName = draftStyleName.trim();
-    if (!trimmedName) {
-      Alert.alert('Style name needed', 'Please enter a name for your Stickie style before saving.');
-      return;
-    }
-
-    const nextStyle = createStickieStyle({
-      name: trimmedName,
-      color: draftColor,
-      textColor: draftTextColor,
-      fontFamily: draftFont,
-      fontSize: draftFontSize,
-      textStyle: draftTextStyle,
-      contentType: draftContentType,
-      useSvgBackground: draftUseSvgBackground,
-      backgroundImageUrl: draftBackgroundImageUrl,
-      margins: draftMargins,
-      itemSpacing: draftItemSpacing,
-      lineSpacing: draftLineSpacing,
-      checklistSort: draftChecklistSort,
-      checklistTextMode: draftChecklistTextMode,
-    });
-
-    onUpdateSettings({
-      stickieStyles: [...(settings.stickieStyles || []), nextStyle],
-      defaultStyleId: nextStyle.id,
-      defaultColor: nextStyle.color,
-      defaultTextColor: nextStyle.textColor,
-      defaultFont: nextStyle.fontFamily,
-      defaultFontSize: nextStyle.fontSize,
-    });
-    setDraftStyleName('');
-    Alert.alert('Style saved', `Saved “${trimmedName}” to your Stickie styles.`);
-  };
-
-  const applyStyle = (style: NonNullable<AppSettings['stickieStyles']>[number]) => {
-    onUpdateSettings({
-      defaultStyleId: style.id,
-      defaultColor: style.color,
-      defaultTextColor: style.textColor,
-      defaultFont: style.fontFamily,
-      defaultFontSize: style.fontSize,
-    });
-    setDraftColor(style.color);
-    setDraftTextColor(style.textColor);
-    setDraftFont(style.fontFamily);
-    setDraftFontSize(style.fontSize);
-    setDraftTextStyle(style.textStyle);
-    setDraftContentType(style.contentType);
-    setDraftUseSvgBackground(style.useSvgBackground);
-    setDraftBackgroundImageUrl(style.backgroundImageUrl);
-    setDraftMargins(style.margins || DEFAULT_MARGINS);
-    setDraftItemSpacing(style.itemSpacing || DEFAULT_ITEM_SPACING);
-    setDraftLineSpacing(style.lineSpacing ?? DEFAULT_LINE_SPACING);
-    setDraftChecklistSort(style.checklistSort || 'as-is');
-    setDraftChecklistTextMode(style.checklistTextMode || 'single');
-    Alert.alert('Style applied', `Using “${style.name}” for new notes.`);
-  };
-
-  const previewText = draftContentType === 'checklist'
-    ? '• Checklist'
-    : 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
-
-  const previewContent: string | ChecklistItem[] = draftContentType === 'checklist'
-    ? [
-      { id: 'p1', text: 'Lorem ipsum dolor', completed: false },
-      { id: 'p2', text: 'Ut enim ad minim veniam, quis nostrud exercitation.', completed: false },
-      { id: 'p3', text: 'Duis aute irure dolor in reprehenderit.', completed: false },
-    ]
-    : previewText;
-
-  const previewStyle: any = {
-    fontFamily: draftFont,
-    fontSize: Math.max(14, draftFontSize - 2),
-    color: draftTextColor,
-    fontWeight: draftTextStyle === 'bold' ? 'bold' : 'normal',
-    fontStyle: draftTextStyle === 'italic' ? 'italic' : 'normal',
-    textDecorationLine: draftTextStyle === 'underline' ? 'underline' : 'none',
   };
 
   // ── Small building blocks ────────────────────────────────────────────────────
@@ -497,10 +380,11 @@ const SettingsModal = ({
 
           {/* ── STICKIE STYLES ── */}
           <SectionHeader label="Stickie styles" />
+
           <SectionCard>
-            <Row>
+            <Row last>
               <View style={{ flex: 1 }}>
-                <RowLabel label="Default tab" />
+                <RowLabel label="Default tab" hint="Where new notes are created by default" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
                   {tabs.map(tab => (
                     <TouchableOpacity key={tab.id} onPress={() => onUpdateSettings({ defaultTabId: tab.id })}>
@@ -520,68 +404,15 @@ const SettingsModal = ({
                 </ScrollView>
               </View>
             </Row>
-
-            <Row>
-              <View style={{ flex: 1 }}>
-                <RowLabel label="Style preview" />
-                <NeuView isDark={isDark} radius={NEU_RADIUS.md} backgroundColor={draftColor} style={{ marginTop: 10, padding: 14, minHeight: 100 }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: draftTextColor, fontFamily: draftFont, marginBottom: 6 }}>Preview Note</Text>
-                  <Text style={[{ fontSize: 12, lineHeight: 17 }, previewStyle]}>{previewText}</Text>
-                </NeuView>
-              </View>
-            </Row>
-
-            <Row>
-              <View style={{ flex: 1 }}>
-                <RowLabel label="Style name" />
-                <NeuView isDark={isDark} inset radius={10} style={{ marginTop: 8 }}>
-                  <TextInput
-                    value={draftStyleName}
-                    onChangeText={setDraftStyleName}
-                    placeholder="My favorite style"
-                    placeholderTextColor={sub}
-                    style={{ paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: text }}
-                  />
-                </NeuView>
-              </View>
-            </Row>
-
-            <Row>
-              {/* Secondary (raised, base-colored) vs Primary (accent) — mirrors the
-                  Cancel/Save pairing in the neumorphic component gallery rather than
-                  showing two identical accent buttons side by side. */}
-              <View style={{ flexDirection: 'row', gap: 10, flex: 1 }}>
-                <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={() => setShowStyleEditor(true)}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: text }}>Add New Style</Text>
-                </NeuPressable>
-                <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} backgroundColor={NEU_ACCENT} style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={handleSaveStyle}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Save Style</Text>
-                </NeuPressable>
-              </View>
-            </Row>
-
-            {(settings.stickieStyles || []).length > 0 && (
-              <View style={{ gap: 8, marginTop: 8 }}>
-                {settings.stickieStyles?.map(style => (
-                  <View key={style.id} style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 10, borderTopWidth: 1, borderTopColor: `${p.darkShadow}30` }}>
-                    <TouchableOpacity style={{ flex: 1 }} onPress={() => applyStyle(style)}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: text }}>{style.name}</Text>
-                      <Text style={{ fontSize: 10, color: sub, marginTop: 2 }}>{style.color} · {style.textColor}</Text>
-                    </TouchableOpacity>
-                    <NeuPressable
-                      isDark={isDark}
-                      radius={9}
-                      backgroundColor={settings.defaultStyleId === style.id ? NEU_ACCENT : undefined}
-                      style={{ paddingHorizontal: 12, paddingVertical: 8 }}
-                      onPress={() => applyStyle(style)}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: settings.defaultStyleId === style.id ? '#fff' : sub }}>Use</Text>
-                    </NeuPressable>
-                  </View>
-                ))}
-              </View>
-            )}
           </SectionCard>
+
+          {/* Expandable manager: preview + dropdown + Add New / Edit Current.
+              See components/StickieStyleSection.tsx. */}
+          <View style={{ marginTop: 12 }}>
+            <SectionCard>
+              <StickieStyleSection isDark={isDark} />
+            </SectionCard>
+          </View>
 
           {/* ── DATA ── */}
           <SectionHeader label="Data" />
@@ -619,46 +450,6 @@ const SettingsModal = ({
 
           <View style={{ height: 40 }} />
         </ScrollView>
-
-        <NoteModal
-          visible={showStyleEditor}
-          tabName="Preview"
-          contentType={draftContentType}
-          onContentTypeChange={setDraftContentType}
-          content={previewContent}
-          onContentChange={() => {}}
-          selectedColor={draftColor}
-          onColorChange={setDraftColor}
-          selectedTextColor={draftTextColor}
-          onTextColorChange={setDraftTextColor}
-          selectedFont={draftFont}
-          onFontChange={setDraftFont}
-          selectedFontSize={draftFontSize}
-          onFontSizeChange={setDraftFontSize}
-          selectedTextStyle={draftTextStyle}
-          onTextStyleChange={setDraftTextStyle}
-          useSvgBackground={draftUseSvgBackground}
-          onUseSvgBackgroundChange={setDraftUseSvgBackground}
-          svgFrameId={draftUseSvgBackground ? FRAME_IDS[0] : undefined}
-          backgroundImageUrl={draftBackgroundImageUrl}
-          onBackgroundImageUrlChange={setDraftBackgroundImageUrl}
-          selectedMargins={draftMargins}
-          onMarginsChange={setDraftMargins}
-          selectedItemSpacing={draftItemSpacing}
-          onItemSpacingChange={setDraftItemSpacing}
-          selectedLineSpacing={draftLineSpacing}
-          onLineSpacingChange={setDraftLineSpacing}
-          selectedChecklistSort={draftChecklistSort}
-          onChecklistSortChange={setDraftChecklistSort}
-          selectedChecklistTextMode={draftChecklistTextMode}
-          onChecklistTextModeChange={setDraftChecklistTextMode}
-          onSave={() => { handleSaveStyle(); setShowStyleEditor(false); }}
-          onCancel={() => setShowStyleEditor(false)}
-          showDiscardConfirmation={settings.showDiscardConfirmation}
-          onDisableDiscardConfirmation={() => onUpdateSettings({ showDiscardConfirmation: false })}
-          previewMode={true}
-          initialShowStyling={true}
-        />
 
         {/* Import JSON overlay */}
         <Modal visible={showImport} animationType="slide" transparent onRequestClose={() => setShowImport(false)}>

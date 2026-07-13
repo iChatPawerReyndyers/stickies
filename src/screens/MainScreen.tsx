@@ -565,6 +565,17 @@ const MainScreen = () => {
     }
   };
 
+  // Wallpaper behind the notes grid — independent of the active tab's own
+  // pill image (tab.backgroundImageUrl), and only present when that tab
+  // was explicitly given one.
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  const resolvedScreenBgImage = resolveImageUrl(activeTab?.screenBackgroundImageUrl);
+  // When there's a photo behind the grid, the neumorphic shadow pair on
+  // each card/row reads as visual noise rather than a soft-UI edge, so it's
+  // dropped entirely rather than tuned per-photo. See Neumorphic.tsx's
+  // `noShadow` prop.
+  const hasScreenBackgroundImage = !!resolvedScreenBgImage;
+
   const renderItem = ({ item, index }: { item: DisplayNote; index: number }) => {
     if ('placeholder' in item && item.placeholder) {
       const itemStyle = index % numColumns === numColumns - 1
@@ -583,6 +594,7 @@ const MainScreen = () => {
           note={note}
           onEdit={() => (note.tabId === 'trash' ? openReadOnly(note) : editNote(note))}
           onLongPress={() => openViewOnlyModal(note)}
+          hasScreenBackgroundImage={hasScreenBackgroundImage}
         />
       );
     }
@@ -599,6 +611,7 @@ const MainScreen = () => {
           onDelete={() => deleteNote(note.id)}
           onLongPress={() => openViewOnlyModal(note)}
           cardSize={cardSize}
+          hasScreenBackgroundImage={hasScreenBackgroundImage}
         />
       </View>
     );
@@ -635,12 +648,6 @@ const MainScreen = () => {
   const noteModalTabId = editingNote ? editingNote.tabId : activeTabId;
   const noteModalTabName = tabs.find(t => t.id === noteModalTabId)?.name || 'General';
   const viewOnlyTabName = tabs.find(t => t.id === viewOnlyNote?.tabId)?.name || 'General';
-
-  // Wallpaper behind the notes grid — independent of the active tab's own
-  // pill image (tab.backgroundImageUrl), and only present when that tab
-  // was explicitly given one.
-  const activeTab = tabs.find(t => t.id === activeTabId);
-  const resolvedScreenBgImage = resolveImageUrl(activeTab?.screenBackgroundImageUrl);
 
   // App PIN lock gate — shown instead of the main screen whenever the lock
   // is enabled and this session hasn't been unlocked yet. Placed after data

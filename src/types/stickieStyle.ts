@@ -21,7 +21,7 @@ import {
   DEFAULT_LINE_SPACING,
   ChecklistSort,
   ChecklistTextMode,
-} from '../types';
+} from '.';
 
 export interface StickieStyle {
   id: string;

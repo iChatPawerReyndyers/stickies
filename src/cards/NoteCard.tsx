@@ -13,9 +13,13 @@ type NoteCardProps = {
   onDelete: () => void;
   onLongPress?: (event: GestureResponderEvent) => void;
   cardSize?: number;
+  // True when the active tab has a screen wallpaper set (Tab.screenBackgroundImageUrl).
+  // The neumorphic shadow pair reads as visual noise on top of a busy photo,
+  // so it's dropped entirely in that case rather than tuned per-photo.
+  hasScreenBackgroundImage?: boolean;
 };
 
-const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize }: NoteCardProps) => {
+const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize, hasScreenBackgroundImage = false }: NoteCardProps) => {
   const size = propCardSize ?? CARD_SIZE;
   const getTextStyle = (): any => {
     const baseStyle: any = { fontFamily: note.fontFamily, color: note.textColor };
@@ -151,6 +155,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize 
     <NeuPressable
       radius={NEU_RADIUS.lg}
       backgroundColor={(FrameComponent || resolvedImageUrl) ? 'transparent' : note.color}
+      noShadow={hasScreenBackgroundImage}
       style={{ width: size, height: size, padding: 12, overflow: 'hidden' }}
       onPress={onEdit}
       onLongPress={onLongPress}

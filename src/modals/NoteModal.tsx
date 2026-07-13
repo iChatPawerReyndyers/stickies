@@ -14,13 +14,14 @@ import {
   Platform,
   Keyboard,
 } from 'react-native';
-import Svg, { Path, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, ChecklistSort, ChecklistTextMode } from '../types';
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { FRAME_COMPONENTS } from '../frames';
 import SwipeToAction from '../components/SwipeToAction';
 import { resolveImageUrl } from '../utils/googleDriveImage';
 import { NeuView, NeuPressable } from '../components/Neumorphic';
+import CheckboxIcon from '../components/CheckboxIcon';
 import { NEU_RADIUS, NEU_ACCENT, NEU_DANGER, getNeuPalette } from '../theme/neumorphic';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -36,30 +37,12 @@ const AVAILABLE_TEXT_ROW_WIDTH =
 const MINI_SWATCH = 22;
 const MINI_GAP = 6;
 
-const CHECKBOX_STROKE_COLOR = '#1C1C1E';
-const CHECKBOX_CHECKED_FILL = '#1C1C1E';
 const BRUSH_STROKE_COLOR = '#E7C4B2';
 
-// ── SVG Checkbox ───────────────────────────────────────────────────────────────
-
-const CheckboxIcon: React.FC<{ checked: boolean; size?: number }> = ({ checked, size = CHECKBOX_SIZE }) => (
-  <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-    <Rect
-      x={size * 0.08} y={size * 0.08}
-      width={size * 0.84} height={size * 0.84}
-      rx={size * 0.26} ry={size * 0.26}
-      stroke={CHECKBOX_STROKE_COLOR} strokeWidth={size * 0.1}
-      fill={checked ? CHECKBOX_CHECKED_FILL : 'transparent'}
-    />
-    {checked && (
-      <Path
-        d={`M${size * 0.27} ${size * 0.52} L${size * 0.42} ${size * 0.67} L${size * 0.75} ${size * 0.32}`}
-        stroke="#FFFFFF" strokeWidth={size * 0.09}
-        strokeLinecap="round" strokeLinejoin="round" fill="none"
-      />
-    )}
-  </Svg>
-);
+// CheckboxIcon now lives in ../components/CheckboxIcon (imported above) so
+// it can be reused by StickieStylePreviewCard without duplicating the SVG
+// markup. Its default size (26) matches this file's CHECKBOX_SIZE, so every
+// existing `<CheckboxIcon checked={...} />` call site below is unchanged.
 
 // ── Brush stroke ───────────────────────────────────────────────────────────────
 
@@ -167,6 +150,14 @@ type NoteModalProps = {
   // strips all editing affordances — no styling ('v') toggle, no footer
   // buttons. Closed only via the ✕ in the top-right corner (calls onCancel).
   viewOnly?: boolean;
+  // When true, the modal behaves as a style-only editor: content is
+  // read-only, the Styling bar is force-opened and can't be closed
+  // independently, and the footer shows Confirm/Cancel instead of the
+  // normal Save/Cancel (or the hidden footer used by viewOnly).
+  styleEditorMode?: boolean;
+  // Called when Confirm is tapped in styleEditorMode. Falls back to onSave
+  // if not provided.
+  onConfirmStyle?: () => void;
   // Swipe-to-action — only wired up when the caller actually has a real,
   // already-saved note to act on (undefined disables swipe silently).
   onSwipeDelete?: () => void;
@@ -220,6 +211,8 @@ const NoteModal = ({
   previewMode = false,
   initialShowStyling = false,
   viewOnly = false,
+  styleEditorMode = false,
+  onConfirmStyle,
   onSwipeDelete,
   onSwipeArchive,
 }: NoteModalProps) => {
@@ -262,7 +255,7 @@ const NoteModal = ({
 
   // Read-only note content is presented the same way as previewMode's
   // (non-editable) rendering — this just extends that same rendering path.
-  const isReadOnlyContent = previewMode || viewOnly;
+  const isReadOnlyContent = previewMode || viewOnly || styleEditorMode;
 
   // Swipe is enabled in View Only always, and in the normal editor only once
   // the styling bar is closed and the keyboard is down — i.e. exactly the
@@ -289,6 +282,14 @@ const NoteModal = ({
   useEffect(() => {
     if (visible && initialShowStyling && !viewOnly) setShowStyling(true);
   }, [visible, initialShowStyling, viewOnly]);
+
+  // In style-editor mode the Styling bar is always visible — content is
+  // read-only underneath it, and the note-level Confirm/Cancel buttons are
+  // the only way out (there's no separate open/close step like the normal
+  // 'v'/'✓' toggle).
+  useEffect(() => {
+    if (visible && styleEditorMode) setShowStyling(true);
+  }, [visible, styleEditorMode]);
 
   // The styling bar and the keyboard should never be on screen together —
   // dismiss the keyboard any time the styling bar is opened.
@@ -555,7 +556,7 @@ const NoteModal = ({
                 >
                   <Text style={s.closeIconX}>✕</Text>
                 </TouchableOpacity>
-              ) : (
+              ) : styleEditorMode ? null : (
                 <TouchableOpacity
                   onPress={showStyling ? saveStyling : openStyling}
                   activeOpacity={0.7}
@@ -725,7 +726,20 @@ const NoteModal = ({
             {!viewOnly && (
               <>
                 <View style={s.dividerLine} />
-                {previewMode ? (
+                {styleEditorMode ? (
+                  <View style={s.actionRow}>
+                    <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
+                      <Text style={s.cancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.btn, s.btnConfirm]}
+                      onPress={onConfirmStyle || onSave}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={s.confirmText}>Confirm</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : previewMode ? (
                   <View style={s.actionRow}>
                     <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
                       <Text style={s.cancelText}>Cancel</Text>
@@ -756,13 +770,21 @@ const NoteModal = ({
             <View style={barStyles.bottomSheet}>
               <NeuView radius={20} style={{ height: STYLING_BAR_HEIGHT, width: '100%' }}>
               <View style={barStyles.barHeader}>
-                <TouchableOpacity onPress={handleXPress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={barStyles.barHeaderClose}>✕</Text>
-                </TouchableOpacity>
+                {!styleEditorMode ? (
+                  <TouchableOpacity onPress={handleXPress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={barStyles.barHeaderClose}>✕</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ width: 44 }} />
+                )}
                 <Text style={barStyles.barHeaderTitle}>Styling</Text>
-                <TouchableOpacity onPress={saveStyling} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={barStyles.barHeaderDone} numberOfLines={1}>Done</Text>
-                </TouchableOpacity>
+                {!styleEditorMode ? (
+                  <TouchableOpacity onPress={saveStyling} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={barStyles.barHeaderDone} numberOfLines={1}>Done</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ width: 44 }} />
+                )}
               </View>
               <View style={[barStyles.barHeaderDivider, { backgroundColor: `${p.darkShadow}55` }]} />
               <ScrollView

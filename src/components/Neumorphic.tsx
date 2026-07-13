@@ -67,6 +67,11 @@ type NeuViewProps = {
   isDark?: boolean;
   distance?: number;
   backgroundColor?: string; // override base color (e.g. a colored note card)
+  // Skips the raised dual-shadow (iOS) / stacked-blur (Android) layers
+  // entirely — used when the surface sits on top of a busy photo
+  // background (e.g. a tab's screen wallpaper), where the neumorphic
+  // shadow pair reads as visual noise rather than a soft-UI edge.
+  noShadow?: boolean;
 };
 
 export const NeuView: React.FC<NeuViewProps> = ({
@@ -77,6 +82,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
   isDark = false,
   distance = NEU_SHADOW.distance,
   backgroundColor,
+  noShadow = false,
 }) => {
   const p = getNeuPalette(isDark);
   const bg = backgroundColor || (inset ? p.insetBase : p.base);
@@ -119,7 +125,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
   // direction. Either way the real content View paints last/on top.
   return (
     <View style={{ position: 'relative' }}>
-      {IS_ANDROID ? (
+      {!noShadow && (IS_ANDROID ? (
         <>
           {buildDarkBlurLayers(distance).map((l, i) => (
             <View
@@ -182,7 +188,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
             }}
           />
         </>
-      )}
+      ))}
       <View
         style={[
           { borderRadius: radius, backgroundColor: androidRaisedBg },
@@ -201,6 +207,7 @@ type NeuPressableProps = PressableProps & {
   radius?: number;
   isDark?: boolean;
   backgroundColor?: string;
+  noShadow?: boolean;
 };
 
 // Raised by default; flips to the inset "pressed" look while held down —
@@ -211,6 +218,7 @@ export const NeuPressable: React.FC<NeuPressableProps> = ({
   radius = NEU_RADIUS.md,
   isDark = false,
   backgroundColor,
+  noShadow = false,
   onPressIn,
   onPressOut,
   ...rest
@@ -222,7 +230,7 @@ export const NeuPressable: React.FC<NeuPressableProps> = ({
       onPressOut={(e) => { setPressed(false); onPressOut?.(e); }}
       {...rest}
     >
-      <NeuView radius={radius} inset={pressed} isDark={isDark} backgroundColor={pressed ? undefined : backgroundColor} style={style}>
+      <NeuView radius={radius} inset={pressed} isDark={isDark} backgroundColor={pressed ? undefined : backgroundColor} noShadow={noShadow} style={style}>
         {children}
       </NeuView>
     </Pressable>
