@@ -25,7 +25,7 @@ import { NEU_RADIUS, NEU_ACCENT, NEU_DANGER, getNeuPalette } from '../theme/neum
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
-const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.32);
+const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.285);
 const MODAL_WIDTH = 320;
 const CARD_HORIZONTAL_PADDING = 24;
 const CHECKBOX_SIZE = 26;
@@ -33,8 +33,8 @@ const ROW_GAP = 14;
 const BRUSH_HEIGHT = 24;
 const AVAILABLE_TEXT_ROW_WIDTH =
   MODAL_WIDTH - CARD_HORIZONTAL_PADDING * 2 - CHECKBOX_SIZE - ROW_GAP;
-const MINI_SWATCH = 24;
-const MINI_GAP = 7;
+const MINI_SWATCH = 22;
+const MINI_GAP = 6;
 
 const CHECKBOX_STROKE_COLOR = '#1C1C1E';
 const CHECKBOX_CHECKED_FILL = '#1C1C1E';
@@ -761,7 +761,7 @@ const NoteModal = ({
                 </TouchableOpacity>
                 <Text style={barStyles.barHeaderTitle}>Styling</Text>
                 <TouchableOpacity onPress={saveStyling} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={barStyles.barHeaderDone}>Done</Text>
+                  <Text style={barStyles.barHeaderDone} numberOfLines={1}>Done</Text>
                 </TouchableOpacity>
               </View>
               <View style={[barStyles.barHeaderDivider, { backgroundColor: `${p.darkShadow}55` }]} />
@@ -777,17 +777,17 @@ const NoteModal = ({
                 scrollEventThrottle={32}
               >
               {/* ── Content Type ── */}
-              <View style={[barStyles.section, { width: 122 }]}>
+              <View style={[barStyles.section, { width: 116 }]}>
                 <Text style={barStyles.sLabel}>Type</Text>
                 {(['text', 'checklist'] as ContentType[]).map(type => (
                   <NeuPressable
                     key={type}
                     radius={9}
                     backgroundColor={contentType === type ? NEU_ACCENT : p.base}
-                    style={{ paddingVertical: 12, alignItems: 'center', marginBottom: 9 }}
+                    style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
                     onPress={() => onContentTypeChange(type)}
                   >
-                    <Text style={[barStyles.miniBtnText, contentType === type && barStyles.miniBtnTextActive]}>
+                    <Text style={[barStyles.miniBtnText, { fontSize: 9.5 }, contentType === type && barStyles.miniBtnTextActive]}>
                       {type === 'text' ? 'Text' : 'Checklist'}
                     </Text>
                   </NeuPressable>
@@ -797,7 +797,7 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Background ── */}
-              <View style={[barStyles.section, { width: 194 }]}>
+              <View style={[barStyles.section, { width: 176 }]}>
                 <Text style={barStyles.sLabel}>Background</Text>
                 <TouchableOpacity
                   style={[barStyles.svgToggle, !!resolvedBgImageUrl && barStyles.disabled]}
@@ -850,7 +850,7 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Font Color ── */}
-              <View style={[barStyles.section, { width: 182 }]}>
+              <View style={[barStyles.section, { width: 165 }]}>
                 <Text style={barStyles.sLabel}>Font Color</Text>
                 <View style={barStyles.swatchGrid}>
                   {TEXT_COLORS.map(color => (
@@ -873,21 +873,25 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Font ── */}
-              <View style={[barStyles.section, { width: 192 }]}>
+              <View style={[barStyles.section, { width: 174 }]}>
                 <Text style={barStyles.sLabel}>Font</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP }}>
-                  {FONTS.map(font => (
-                    <NeuPressable
-                      key={font.value}
-                      radius={7}
-                      backgroundColor={selectedFont === font.value ? NEU_ACCENT : p.base}
-                      style={[barStyles.fontChip]}
-                      onPress={() => onFontChange(font.value)}
-                    >
-                      <Text style={[barStyles.fontChipText, { fontFamily: font.value }, selectedFont === font.value && barStyles.miniBtnTextActive]} numberOfLines={1} adjustsFontSizeToFit>
-                        {font.name}
-                      </Text>
-                    </NeuPressable>
+                <View>
+                  {Array.from({ length: Math.ceil(FONTS.length / 2) }).map((_, rowIndex) => (
+                    <View key={rowIndex} style={{ flexDirection: 'row', gap: MINI_GAP, marginBottom: MINI_GAP }}>
+                      {FONTS.slice(rowIndex * 2, rowIndex * 2 + 2).map(font => (
+                        <NeuPressable
+                          key={font.value}
+                          radius={7}
+                          backgroundColor={selectedFont === font.value ? NEU_ACCENT : p.base}
+                          style={[barStyles.fontChip]}
+                          onPress={() => onFontChange(font.value)}
+                        >
+                          <Text style={[barStyles.fontChipText, { fontFamily: font.value }, selectedFont === font.value && barStyles.miniBtnTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+                            {font.name}
+                          </Text>
+                        </NeuPressable>
+                      ))}
+                    </View>
                   ))}
                 </View>
               </View>
@@ -895,7 +899,7 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Font Size ── */}
-              <View style={[barStyles.section, { width: 118 }]}>
+              <View style={[barStyles.section, { width: 112 }]}>
                 <Text style={barStyles.sLabel}>Size</Text>
                 <NeuView inset radius={9} style={barStyles.stepper}>
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(6, selectedFontSize - 2))}>
@@ -911,7 +915,7 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Text Style ── */}
-              <View style={[barStyles.section, { width: 172 }]}>
+              <View style={[barStyles.section, { width: 155 }]}>
                 <Text style={barStyles.sLabel}>Style</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP }}>
                   {(['normal', 'bold', 'italic', 'underline'] as TextStyle[]).map(style => (
@@ -942,7 +946,7 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Margins ── */}
-              <View style={[barStyles.section, { width: 208 }]}>
+              <View style={[barStyles.section, { width: 194 }]}>
                 <Text style={barStyles.sLabel}>Margins</Text>
                 {(['top', 'bottom', 'left', 'right'] as const).map(side => (
                   <View key={side} style={barStyles.marginRow}>
@@ -969,7 +973,7 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Spacing (both types — checklist gets item gaps, text gets line spacing) ── */}
-              <View style={[barStyles.section, { width: contentType === 'checklist' ? 168 : 134 }]}>
+              <View style={[barStyles.section, { width: contentType === 'checklist' ? 154 : 122 }]}>
                 <Text style={barStyles.sLabel}>{contentType === 'checklist' ? 'Item Spacing' : 'Line Spacing'}</Text>
                 {contentType === 'checklist' ? (
                   ([
@@ -1018,7 +1022,7 @@ const NoteModal = ({
               {contentType === 'checklist' && (
                 <>
                   <View style={barStyles.vDivider} />
-                  <View style={[barStyles.section, { width: 122 }]}>
+                  <View style={[barStyles.section, { width: 116 }]}>
                     <Text style={barStyles.sLabel}>Display</Text>
                     {([
                       { value: 'single', label: 'Line' },
@@ -1028,7 +1032,7 @@ const NoteModal = ({
                         key={opt.value}
                         radius={9}
                         backgroundColor={selectedChecklistTextMode === opt.value ? NEU_ACCENT : p.base}
-                        style={{ paddingVertical: 12, alignItems: 'center', marginBottom: 9 }}
+                        style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
                         onPress={() => onChecklistTextModeChange(opt.value)}
                       >
                         <Text style={[barStyles.miniBtnText, { textAlign: 'center' }, selectedChecklistTextMode === opt.value && barStyles.miniBtnTextActive]}>
@@ -1038,7 +1042,7 @@ const NoteModal = ({
                     ))}
                   </View>
                   <View style={barStyles.vDivider} />
-                  <View style={[barStyles.section, { width: 138 }]}>
+                  <View style={[barStyles.section, { width: 131 }]}>
                     <Text style={barStyles.sLabel}>Order</Text>
                     {([
                       { value: 'as-is', label: 'As Is' },
@@ -1049,7 +1053,7 @@ const NoteModal = ({
                         key={opt.value}
                         radius={9}
                         backgroundColor={selectedChecklistSort === opt.value ? NEU_ACCENT : p.base}
-                        style={{ paddingVertical: 12, alignItems: 'center', marginBottom: 9 }}
+                        style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
                         onPress={() => onChecklistSortChange(opt.value)}
                       >
                         <Text style={[barStyles.miniBtnText, { textAlign: 'center' }, selectedChecklistSort === opt.value && barStyles.miniBtnTextActive]}>
@@ -1203,25 +1207,25 @@ const barStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 4,
+    paddingBottom: 3,
   },
   barHeaderClose: {
-    fontSize: 15,
+    fontSize: 11.5,
     fontWeight: '700',
     color: NEU_DANGER,
-    width: 30,
+    width: 44,
   },
   barHeaderTitle: {
-    fontSize: 18,
+    fontSize: 11.5,
     fontWeight: '700',
     color: '#8891A5',
   },
   barHeaderDone: {
-    fontSize: 15,
+    fontSize: 11.5,
     fontWeight: '700',
     color: NEU_ACCENT,
-    width: 30,
+    width: 44,
     textAlign: 'right',
   },
   barHeaderDivider: {
@@ -1246,27 +1250,27 @@ const barStyles = StyleSheet.create({
     backgroundColor: NEU_ACCENT,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingHorizontal: 13,
+    paddingVertical: 16,
     alignItems: 'flex-start',
   },
   section: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
   sLabel: {
-    fontSize: 14,
+    fontSize: 11.5,
     fontWeight: '700',
     color: '#8891A5',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 14,
+    marginBottom: 11,
   },
   vDivider: {
     width: 1,
     backgroundColor: '#A6B0C3',
     opacity: 0.35,
     alignSelf: 'stretch',
-    marginHorizontal: 10,
+    marginHorizontal: 7,
   },
   miniBtn: {
     paddingHorizontal: 10,
@@ -1277,12 +1281,12 @@ const barStyles = StyleSheet.create({
     alignItems: 'center',
   },
   miniBtnActive: { backgroundColor: '#007AFF' },
-  miniBtnText: { fontSize: 14, fontWeight: '500', color: '#3A4358' },
+  miniBtnText: { fontSize: 11.5, fontWeight: '500', color: '#3A4358' },
   miniBtnTextActive: { color: '#FFFFFF', fontWeight: '700' },
   svgToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   miniCheck: {
     width: 16,
@@ -1292,16 +1296,16 @@ const barStyles = StyleSheet.create({
     marginRight: 5,
   },
   miniCheckMark: { fontSize: 9, fontWeight: '700', color: '#FFFFFF' },
-  svgToggleText: { fontSize: 14, color: '#3A4358', fontWeight: '500' },
+  svgToggleText: { fontSize: 11.5, color: '#3A4358', fontWeight: '500' },
   swatchGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP },
   disabled: { opacity: 0.35 },
-  imageUrlLabel: { fontSize: 11, fontWeight: '600', color: '#8891A5', marginBottom: 4 },
+  imageUrlLabel: { fontSize: 11.5, fontWeight: '600', color: '#8891A5', marginBottom: 4 },
   imageUrlInput: {
-    height: 34,
-    paddingHorizontal: 10,
-    fontSize: 12,
+    height: 32,
+    paddingHorizontal: 9,
+    fontSize: 11.5,
     color: '#3A4358',
-    width: 170,
+    width: 156,
   },
   swatch: {
     width: MINI_SWATCH,
@@ -1313,35 +1317,35 @@ const barStyles = StyleSheet.create({
   swatchSel: { borderWidth: 2, borderColor: '#3A4358' },
   swatchCheck: { fontSize: 10, fontWeight: '700', color: '#1C1C1E' },
   fontChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    width: 80,
+    paddingHorizontal: 7,
+    paddingVertical: 7,
+    width: 75,
     alignItems: 'center',
   },
-  fontChipText: { fontSize: 15, color: '#3A4358' },
+  fontChipText: { fontSize: 11.5, color: '#3A4358' },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
-    marginTop: 8,
+    marginTop: 7,
   },
-  stepBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  stepBtnText: { fontSize: 20, fontWeight: '400', color: '#F5A623' },
-  stepVal: { width: 34, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#3A4358' },
+  stepBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  stepBtnText: { fontSize: 19, fontWeight: '400', color: '#F5A623' },
+  stepVal: { width: 32, textAlign: 'center', fontSize: 11.5, fontWeight: '600', color: '#3A4358' },
   styleChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    width: 72,
+    paddingHorizontal: 7,
+    paddingVertical: 7,
+    width: 67,
     alignItems: 'center',
   },
-  styleChipText: { fontSize: 15, color: '#3A4358' },
+  styleChipText: { fontSize: 11.5, color: '#3A4358' },
   marginRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  marginLabel: { fontSize: 15, fontWeight: '500', color: '#3A4358', width: 42 },
+  marginLabel: { fontSize: 11.5, fontWeight: '500', color: '#3A4358', width: 42 },
 });
 
 // ── Discard confirmation overlay styles ───────────────────────────────────────

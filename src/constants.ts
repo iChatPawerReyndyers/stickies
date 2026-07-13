@@ -8,19 +8,19 @@ export const TEXT_COLORS = ['#3A3F4B', '#000000', '#FFFFFF', '#4A4A4A', '#D32F2F
 export const FONTS = Platform.OS === 'ios'
   ? [
       { name: 'System', value: 'System' },
-      { name: 'Palatino', value: 'Palatino' },
-      { name: 'Times New Roman', value: 'Times New Roman' },
-      { name: 'Courier', value: 'Courier' },
       { name: 'Cursive', value: 'Snell Roundhand' },
+      { name: 'Palatino', value: 'Palatino' },
+      { name: 'Courier', value: 'Courier' },
+      { name: 'Times New Roman', value: 'Times New Roman' },
     ]
   : [
       // Android has no bundled Palatino/Times New Roman — both fall back to
       // its generic 'serif' family, which is the closest available match.
       { name: 'System', value: 'sans-serif' },
-      { name: 'Palatino', value: 'serif' },
-      { name: 'Times New Roman', value: 'serif' },
-      { name: 'Courier', value: 'monospace' },
       { name: 'Cursive', value: 'cursive' },
+      { name: 'Palatino', value: 'serif' },
+      { name: 'Courier', value: 'monospace' },
+      { name: 'Times New Roman', value: 'serif' },
     ];
 
 // Cycled through automatically whenever a new (non-built-in) tab is created,

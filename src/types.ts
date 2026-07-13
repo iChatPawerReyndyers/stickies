@@ -49,6 +49,14 @@ export interface AppSettings {
   stickieStyles: StickieStyle[];
   defaultStyleId?: string;
   defaultTabId?: string;
+  // App-wide PIN lock — when enabled, the app shows PinLockScreen on launch
+  // (see components/PinLockScreen.tsx) and requires appPin to be entered
+  // before the main screen becomes accessible. Stored in plaintext, same as
+  // the rest of AppSettings (including JSON export/import) — see the
+  // security note in README_pin_lock_integration.md.
+  appLockEnabled: boolean;
+  appPin: string;
+  appPinLength: 4 | 6;
 }
 
 export interface ChecklistItem {

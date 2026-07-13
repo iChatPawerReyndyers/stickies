@@ -21,6 +21,7 @@ import NoteModal from './NoteModal';
 import { FRAME_IDS } from '../frames';
 import { createStickieStyle } from '../utils/stickieStyles';
 import { NeuView, NeuPressable, NeuToggle, NeuRadio } from '../components/Neumorphic';
+import PinSetupModal from '../components/PinSetupModal';
 import { NEU_BASE, NEU_ACCENT, NEU_DANGER, NEU_TEXT_PRIMARY, NEU_TEXT_SECONDARY, NEU_RADIUS, getNeuPalette } from '../theme/neumorphic';
 
 type SettingsModalProps = {
@@ -63,6 +64,11 @@ const SettingsModal = ({
   const [draftLineSpacing, setDraftLineSpacing] = useState<number>(DEFAULT_LINE_SPACING);
   const [draftChecklistSort, setDraftChecklistSort] = useState<ChecklistSort>('as-is');
   const [draftChecklistTextMode, setDraftChecklistTextMode] = useState<ChecklistTextMode>('single');
+  // Which PIN flow is currently open: 'create' (turning the lock on for the
+  // first time), 'change' (replacing an existing PIN), 'disable' (turning
+  // the lock off — still requires verifying the current PIN), or null when
+  // no PIN modal should be shown.
+  const [pinModalMode, setPinModalMode] = useState<'create' | 'change' | 'disable' | null>(null);
 
   const isDark = settings.theme === 'dark';
   const p = getNeuPalette(isDark);
@@ -92,7 +98,7 @@ const SettingsModal = ({
         'Confirm Import',
         `This will merge ${importedNotes.length} note(s) into your current notes. Continue?`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Cancel', onPress: () => {} },
           {
             text: 'Import',
             onPress: () => {
@@ -457,6 +463,38 @@ const SettingsModal = ({
             </Row>
           </SectionCard>
 
+          {/* ── SECURITY ── */}
+          <SectionHeader label="Security" />
+          <SectionCard>
+            <Row last={!settings.appLockEnabled}>
+              <RowLabel label="App PIN lock" hint="Require a PIN to open the app" />
+              <NeuToggle
+                value={settings.appLockEnabled}
+                onValueChange={(v) => {
+                  if (v) {
+                    setPinModalMode('create');
+                  } else {
+                    setPinModalMode('disable');
+                  }
+                }}
+                isDark={isDark}
+              />
+            </Row>
+            {settings.appLockEnabled && (
+              <Row last>
+                <RowLabel label="Change PIN" hint={`Currently ${settings.appPinLength} digits`} />
+                <NeuPressable
+                  isDark={isDark}
+                  radius={9}
+                  style={{ paddingHorizontal: 14, paddingVertical: 7 }}
+                  onPress={() => setPinModalMode('change')}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: text }}>Change</Text>
+                </NeuPressable>
+              </Row>
+            )}
+          </SectionCard>
+
           {/* ── STICKIE STYLES ── */}
           <SectionHeader label="Stickie styles" />
           <SectionCard>
@@ -653,6 +691,23 @@ const SettingsModal = ({
             </View>
           </View>
         </Modal>
+
+        {/* App PIN lock — create / change / disable flow. See
+            components/PinSetupModal.tsx for the step logic. */}
+        <PinSetupModal
+          visible={pinModalMode !== null}
+          mode={pinModalMode || 'create'}
+          currentPin={settings.appPin}
+          isDark={isDark}
+          onClose={() => setPinModalMode(null)}
+          onComplete={(newPin, newLength) => {
+            if (pinModalMode === 'disable') {
+              onUpdateSettings({ appLockEnabled: false, appPin: '' });
+            } else {
+              onUpdateSettings({ appLockEnabled: true, appPin: newPin, appPinLength: newLength });
+            }
+          }}
+        />
 
       </SafeAreaView>
     </Modal>

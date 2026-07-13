@@ -18,6 +18,7 @@ import TabModal from '../modals/TabModal';
 import SettingsModal from '../modals/SettingsModal';
 import ReadOnlyModal from '../modals/ReadOnlyModal';
 import Toast from '../components/Toast';
+import PinLockScreen from '../components/PinLockScreen';
 import styles, { getCardSize } from '../styles';
 import { Note, ChecklistItem, ContentType, TextStyle, DisplayNote, Tab, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder } from '../types';
 import {
@@ -60,6 +61,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   stickieStyles: [],
   defaultStyleId: undefined,
   defaultTabId: 'all',
+  // App PIN lock — off by default, 4 digits once enabled. See
+  // components/PinLockScreen.tsx / PinSetupModal.tsx.
+  appLockEnabled: false,
+  appPin: '',
+  appPinLength: 4,
 };
 
 const isBuiltInTabId = (id: string) => id === 'all' || id === 'general' || id === 'archived' || id === 'trash';
@@ -120,6 +126,10 @@ const MainScreen = () => {
     visible: false,
     message: '',
   });
+  // Whether the PIN gate has been passed for this app session. Starts
+  // false every cold start; once true it stays true until the app is
+  // relaunched (see PinLockScreen gate below in the render).
+  const [unlocked, setUnlocked] = useState(false);
 
   const updateSettings = (patch: Partial<AppSettings>) =>
     setSettings(prev => ({ ...prev, ...patch }));
@@ -631,6 +641,21 @@ const MainScreen = () => {
   // was explicitly given one.
   const activeTab = tabs.find(t => t.id === activeTabId);
   const resolvedScreenBgImage = resolveImageUrl(activeTab?.screenBackgroundImageUrl);
+
+  // App PIN lock gate — shown instead of the main screen whenever the lock
+  // is enabled and this session hasn't been unlocked yet. Placed after data
+  // load so it doesn't flash the lock screen with stale/default settings
+  // before AsyncStorage has actually loaded the real appLockEnabled value.
+  if (isDataLoaded && settings.appLockEnabled && !unlocked) {
+    return (
+      <PinLockScreen
+        correctPin={settings.appPin}
+        pinLength={settings.appPinLength}
+        isDark={settings.theme === 'dark'}
+        onUnlock={() => setUnlocked(true)}
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, settings.theme === 'dark' && { backgroundColor: '#1C1C1E' }]}>
