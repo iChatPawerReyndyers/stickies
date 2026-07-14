@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import ReadOnlyModal from '../modals/ReadOnlyModal';
 import Toast from '../components/Toast';
 import PinLockScreen from '../components/PinLockScreen';
 import styles, { getCardSize } from '../styles';
-import { Note, ChecklistItem, ContentType, TextStyle, DisplayNote, Tab, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder } from '../types';
+import { Note, ChecklistItem, ContentType, TextStyle, Tab, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN } from '../types';
 import {
   COLORS,
   TEXT_COLORS,
@@ -61,6 +61,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   stickieStyles: [],
   defaultStyleId: undefined,
   defaultTabId: 'all',
+  showAllTab: true,
   // App PIN lock — off by default, 4 digits once enabled. See
   // components/PinLockScreen.tsx / PinSetupModal.tsx.
   appLockEnabled: false,
@@ -70,11 +71,107 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const isBuiltInTabId = (id: string) => id === 'all' || id === 'general' || id === 'archived' || id === 'trash';
 
+// "All" is a virtual, aggregate view over every other tab — it's never a
+// real tab a note can belong to. Anywhere a note's tabId would otherwise
+// become 'all' (creating a note while the All view is active, migrating
+// notes that predate this rule, editing a note that somehow still carries
+// it), resolve it to General instead.
+const resolveTabId = (id?: string): string => (!id || id === 'all') ? 'general' : id;
+
+// Like resolveTabId, but also catches a tabId that doesn't match any tab
+// that actually exists right now — e.g. a note imported before tabs
+// traveled along with the backup (so it kept a tabId from the *source*
+// device that has no local counterpart), or a custom tab that's since been
+// deleted. Any note whose owning tab genuinely can't be found falls back
+// to General rather than becoming invisible everywhere except "All".
+const ownerTabId = (note: Pick<Note, 'tabId'>, tabsList: Tab[]): string => {
+  const id = resolveTabId(note.tabId);
+  return tabsList.some(t => t.id === id) ? id : 'general';
+};
+
 // Cycles through the palette based on how many custom tabs already exist,
 // so each new tab pill gets a different color.
 const getNextTabColor = (currentTabs: Tab[]) => {
   const customCount = currentTabs.filter(t => !isBuiltInTabId(t.id)).length;
   return TAB_COLOR_PALETTE[customCount % TAB_COLOR_PALETTE.length];
+};
+
+// ── Grid layout with spanning notes ─────────────────────────────────────────
+//
+// FlatList's numColumns only supports uniform-size cells, so a note that
+// spans multiple columns/rows (see Note.colSpan/rowSpan, set via the
+// Styling bar's "Grid Size" control) can't be expressed through it. Instead,
+// the grid is packed here into explicit {row, col} placements — a dense,
+// CSS-grid-style auto-placement: scan cells top-left to bottom-right in note
+// order, and drop each note into the first opening its span fits, which
+// naturally fills gaps left by earlier spanning notes rather than just
+// stacking everything strictly in a line.
+const GRID_GAP = 12;
+
+export type GridPlacement = { note: Note; row: number; col: number; colSpan: number; rowSpan: number };
+
+export const layoutNotesGrid = (
+  list: Note[],
+  numColumns: number
+): { placements: GridPlacement[]; totalRows: number } => {
+  const occupied: boolean[][] = [];
+  const ensureRow = (r: number) => {
+    if (!occupied[r]) occupied[r] = new Array(numColumns).fill(false);
+  };
+  const isFree = (row: number, col: number, colSpan: number, rowSpan: number) => {
+    if (col + colSpan > numColumns) return false;
+    for (let r = row; r < row + rowSpan; r++) {
+      ensureRow(r);
+      for (let c = col; c < col + colSpan; c++) {
+        if (occupied[r][c]) return false;
+      }
+    }
+    return true;
+  };
+  const occupy = (row: number, col: number, colSpan: number, rowSpan: number) => {
+    for (let r = row; r < row + rowSpan; r++) {
+      ensureRow(r);
+      for (let c = col; c < col + colSpan; c++) occupied[r][c] = true;
+    }
+  };
+
+  const placements: GridPlacement[] = [];
+  let totalRows = 0;
+
+  // Guards against any corrupted/unexpected numColumns (e.g. 0 or NaN from a
+  // bad settings value) ever hanging the JS thread — after a generous bound
+  // of scanned rows, just drop the note in its own row rather than spin
+  // forever. In normal operation (numColumns 2 or 3) this is never hit.
+  const MAX_SCAN_ROWS = 2000;
+
+  list.forEach(note => {
+    const colSpan = Math.min(Math.max(1, numColumns), Math.max(1, note.colSpan || DEFAULT_COL_SPAN));
+    const rowSpan = Math.min(MAX_NOTE_ROW_SPAN, Math.max(1, note.rowSpan || DEFAULT_ROW_SPAN));
+
+    let row = 0;
+    let placed = false;
+    while (!placed && row < MAX_SCAN_ROWS) {
+      for (let col = 0; col <= numColumns - colSpan; col++) {
+        if (isFree(row, col, colSpan, rowSpan)) {
+          occupy(row, col, colSpan, rowSpan);
+          placements.push({ note, row, col, colSpan, rowSpan });
+          totalRows = Math.max(totalRows, row + rowSpan);
+          placed = true;
+          break;
+        }
+      }
+      row += 1;
+    }
+    if (!placed) {
+      // Fallback for the pathological case above — still shows the note
+      // rather than silently dropping it.
+      const fallbackRow = totalRows;
+      placements.push({ note, row: fallbackRow, col: 0, colSpan: 1, rowSpan: 1 });
+      totalRows = fallbackRow + 1;
+    }
+  });
+
+  return { placements, totalRows };
 };
 
 const MainScreen = () => {
@@ -96,6 +193,10 @@ const MainScreen = () => {
   const [selectedLineSpacing, setSelectedLineSpacing] = useState<number>(DEFAULT_LINE_SPACING);
   const [selectedChecklistSort, setSelectedChecklistSort] = useState<ChecklistSort>('as-is');
   const [selectedChecklistTextMode, setSelectedChecklistTextMode] = useState<ChecklistTextMode>('single');
+  // How many grid columns/rows the note being created/edited should occupy
+  // in the main grid (see the Styling bar's "Grid Size" control).
+  const [selectedColSpan, setSelectedColSpan] = useState<number>(DEFAULT_COL_SPAN);
+  const [selectedRowSpan, setSelectedRowSpan] = useState<number>(DEFAULT_ROW_SPAN);
   // Last-known checklist state (order + checked status) for the note being
   // edited, captured whenever its content type leaves 'checklist'. Lets
   // switching back restore it instead of starting from scratch — see
@@ -143,7 +244,7 @@ const MainScreen = () => {
   // always agrees on how many columns actually exist. Forced to 1 in list view.
   const numColumns = isListView ? 1 : settings.gridColumns;
 
-  const nonTrashTabs = tabs.filter(t => t.id !== 'trash');
+  const nonTrashTabs = tabs.filter(t => t.id !== 'trash' && (t.id !== 'all' || settings.showAllTab));
   const trashTab = tabs.find(t => t.id === 'trash');
 
   const showToast = (message: string, onUndo?: () => void) => {
@@ -161,17 +262,10 @@ const MainScreen = () => {
           AsyncStorage.getItem(SETTINGS_KEY),
         ]);
 
-        if (notesJson) {
-          const parsed = JSON.parse(notesJson);
-          if (Array.isArray(parsed)) {
-            setNotes(parsed.map((note: any) => ({
-              ...note,
-              textColor: note.textColor || '#333333',
-              contentType: note.contentType === 'bullets' ? 'text' : note.contentType,
-              color: LEGACY_COLOR_MIGRATION[note.color] || note.color,
-            })));
-          }
-        }
+        // Tabs are resolved first so the note-tabId migration below can
+        // check each note's tabId against the *actual* set of tabs that
+        // will exist, not just do a blind pass-through.
+        let finalTabsForMigration: Tab[] = tabs;
 
         if (tabsJson) {
           const parsedTabs = JSON.parse(tabsJson);
@@ -209,6 +303,24 @@ const MainScreen = () => {
             });
 
             setTabs(finalTabs);
+            finalTabsForMigration = finalTabs;
+          }
+        }
+
+        if (notesJson) {
+          const parsed = JSON.parse(notesJson);
+          if (Array.isArray(parsed)) {
+            setNotes(parsed.map((note: any) => ({
+              ...note,
+              textColor: note.textColor || '#333333',
+              contentType: note.contentType === 'bullets' ? 'text' : note.contentType,
+              color: LEGACY_COLOR_MIGRATION[note.color] || note.color,
+              // Folds notes with no real owner — no tabId, the old literal
+              // 'all', or a tabId from a source device/deleted tab that
+              // doesn't exist here (e.g. an early import that predates
+              // tabs traveling with the backup) — into General.
+              tabId: ownerTabId(note, finalTabsForMigration),
+            })));
           }
         }
 
@@ -271,6 +383,16 @@ const MainScreen = () => {
     return () => clearInterval(interval);
   }, [isDataLoaded]);
 
+  // If the All pill is hidden (or gets hidden mid-session) while it's the
+  // active tab, there'd be nothing to show in the rail as "selected" — jump
+  // to General instead, same place a note filed from the All view now ends
+  // up (see resolveTabId).
+  useEffect(() => {
+    if (isDataLoaded && !settings.showAllTab && activeTabId === 'all') {
+      setActiveTabId('general');
+    }
+  }, [isDataLoaded, settings.showAllTab, activeTabId]);
+
   const createNewNote = () => {
     if (activeTabId === 'trash') {
       Alert.alert('Cannot create in Trash', 'You cannot create a note inside Trash.');
@@ -296,6 +418,8 @@ const MainScreen = () => {
     setSelectedLineSpacing(DEFAULT_LINE_SPACING);
     setSelectedChecklistSort('as-is');
     setSelectedChecklistTextMode('single');
+    setSelectedColSpan(DEFAULT_COL_SPAN);
+    setSelectedRowSpan(DEFAULT_ROW_SPAN);
     setChecklistSnapshot(undefined);
     setShowModal(true);
   };
@@ -348,6 +472,8 @@ const MainScreen = () => {
     setSelectedLineSpacing(note.lineSpacing ?? DEFAULT_LINE_SPACING);
     setSelectedChecklistSort(note.checklistSort || 'as-is');
     setSelectedChecklistTextMode(note.checklistTextMode || 'single');
+    setSelectedColSpan(note.colSpan || DEFAULT_COL_SPAN);
+    setSelectedRowSpan(note.rowSpan || DEFAULT_ROW_SPAN);
     setChecklistSnapshot(note.checklistSnapshot);
     setShowModal(true);
   };
@@ -438,7 +564,7 @@ const MainScreen = () => {
               fontFamily: selectedFont,
               fontSize: selectedFontSize,
               textStyle: selectedTextStyle,
-              tabId: editingNote.tabId || 'all',
+              tabId: resolveTabId(editingNote.tabId),
               useSvgBackground,
               svgFrameId: useSvgBackground ? svgFrameId : undefined,
               backgroundImageUrl,
@@ -447,6 +573,8 @@ const MainScreen = () => {
               lineSpacing: selectedLineSpacing,
               checklistSort: selectedChecklistSort,
               checklistTextMode: selectedChecklistTextMode,
+              colSpan: selectedColSpan,
+              rowSpan: selectedRowSpan,
               checklistSnapshot,
             }
           : note
@@ -463,7 +591,7 @@ const MainScreen = () => {
         fontFamily: selectedFont,
         fontSize: selectedFontSize,
         textStyle: selectedTextStyle,
-        tabId: activeTabId || 'all',
+        tabId: resolveTabId(activeTabId),
         useSvgBackground,
         svgFrameId: useSvgBackground ? svgFrameId : undefined,
         backgroundImageUrl,
@@ -472,6 +600,8 @@ const MainScreen = () => {
         lineSpacing: selectedLineSpacing,
         checklistSort: selectedChecklistSort,
         checklistTextMode: selectedChecklistTextMode,
+        colSpan: selectedColSpan,
+        rowSpan: selectedRowSpan,
         checklistSnapshot,
       };
       setNotes([newNote, ...notes]);
@@ -576,54 +706,30 @@ const MainScreen = () => {
   // `noShadow` prop.
   const hasScreenBackgroundImage = !!resolvedScreenBgImage;
 
-  const renderItem = ({ item, index }: { item: DisplayNote; index: number }) => {
-    if ('placeholder' in item && item.placeholder) {
-      const itemStyle = index % numColumns === numColumns - 1
-        ? { marginRight: 0 }
-        : { marginRight: 12 };
-      return <View style={[styles.card, styles.placeholderCard, itemStyle, { width: cardSize, height: cardSize }]} />;
-    }
-
-    const note = item as Note;
-
-    // List view: single-column compact rows, no swipe-to-delete on the row
-    // itself (swipe still works from inside the note modals).
-    if (isListView) {
-      return (
-        <NoteListRow
-          note={note}
-          onEdit={() => (note.tabId === 'trash' ? openReadOnly(note) : editNote(note))}
-          onLongPress={() => openViewOnlyModal(note)}
-          hasScreenBackgroundImage={hasScreenBackgroundImage}
-        />
-      );
-    }
-
-    const itemStyle = index % numColumns === numColumns - 1
-      ? { marginRight: 0 }
-      : { marginRight: 12 };
-
-    return (
-      <View style={itemStyle}>
-        <NoteCard
-          note={note}
-          onEdit={() => (note.tabId === 'trash' ? openReadOnly(note) : editNote(note))}
-          onDelete={() => deleteNote(note.id)}
-          onLongPress={() => openViewOnlyModal(note)}
-          cardSize={cardSize}
-          hasScreenBackgroundImage={hasScreenBackgroundImage}
-        />
-      </View>
-    );
-  };
+  // List view: single-column compact rows, no swipe-to-delete on the row
+  // itself (swipe still works from inside the note modals).
+  const renderListItem = ({ item }: { item: Note }) => (
+    <NoteListRow
+      note={item}
+      onEdit={() => (item.tabId === 'trash' ? openReadOnly(item) : editNote(item))}
+      onLongPress={() => openViewOnlyModal(item)}
+      hasScreenBackgroundImage={hasScreenBackgroundImage}
+    />
+  );
 
   // "All" aggregates every normal tab, but Trash and Archived are their own
   // dedicated views — a note swiped into either should disappear from "All"
   // (and every other normal tab) just like it already does from its
   // original tab, only reappearing under Trash/Archived themselves.
+  //
+  // A note whose tab can't actually be found — no tabId at all, an old
+  // literal 'all', or a tabId belonging to a tab that's been deleted or was
+  // never local to begin with — is treated as belonging to General here
+  // too, as a defensive fallback on top of the load-time migration above,
+  // so it's never simply invisible from every real tab.
   const rawBaseNotes = activeTabId === 'all'
     ? notes.filter(n => n.tabId !== 'trash' && n.tabId !== 'archived')
-    : notes.filter(n => n.tabId === activeTabId);
+    : notes.filter(n => ownerTabId(n, tabs) === activeTabId);
 
   const baseNotes = (() => {
     const s = settings.sortOrder;
@@ -636,14 +742,15 @@ const MainScreen = () => {
     return sorted;
   })();
 
-  // Placeholder tiles only make sense to pad out a multi-column grid — a
-  // single-column list never needs filler cells.
   const cardSize = getCardSize(numColumns);
-  const placeholdersNeeded = isListView ? 0 : (numColumns - (baseNotes.length % numColumns)) % numColumns;
-  const displayedNotes: DisplayNote[] = [...baseNotes];
-  for (let i = 0; i < placeholdersNeeded; i += 1) {
-    displayedNotes.push({ id: `placeholder-${i}`, placeholder: true });
-  }
+
+  // Packs baseNotes (including any spanning colSpan/rowSpan notes) into
+  // explicit grid cell placements — see layoutNotesGrid above. Only needed
+  // in grid view; list view renders every note as its own full-width row.
+  const gridLayout = useMemo(
+    () => (isListView ? null : layoutNotesGrid(baseNotes, numColumns)),
+    [baseNotes, numColumns, isListView]
+  );
 
   const noteModalTabId = editingNote ? editingNote.tabId : activeTabId;
   const noteModalTabName = tabs.find(t => t.id === noteModalTabId)?.name || 'General';
@@ -779,32 +886,81 @@ const MainScreen = () => {
                 style={StyleSheet.absoluteFill}
                 resizeMode="cover"
               />
-              {/* Keeps card text/icons readable over a busy photo without
-                  hiding it entirely — tints toward white in light mode and
-                  black in dark mode, matching whichever theme is active. */}
+              {/* A light scrim so a busy photo doesn't fight visually with
+                  the empty gutters between cards — kept subtle since the
+                  cards themselves already sit on their own opaque
+                  background and don't rely on this for text contrast.
+                  Tints toward white in light mode and black in dark mode,
+                  matching whichever theme is active. */}
               <View
                 style={[
                   StyleSheet.absoluteFill,
-                  { backgroundColor: settings.theme === 'dark' ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)' },
+                  { backgroundColor: settings.theme === 'dark' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)' },
                 ]}
                 pointerEvents="none"
               />
             </>
           )}
-          <FlatList
-            key={`grid-${settings.viewMode}-${numColumns}`}
-            data={displayedNotes}
-            keyExtractor={item => item.id}
-            numColumns={numColumns}
-            columnWrapperStyle={isListView ? undefined : styles.noteGrid}
-            contentContainerStyle={styles.listContent}
-            renderItem={renderItem}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No notes yet. Create one to get started!</Text>
+          {isListView ? (
+            <FlatList
+              key={`list-${settings.viewMode}`}
+              style={{ flex: 1 }}
+              data={baseNotes}
+              keyExtractor={item => item.id}
+              contentContainerStyle={styles.listContent}
+              renderItem={renderListItem}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No notes yet. Create one to get started!</Text>
+                </View>
+              }
+            />
+          ) : baseNotes.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No notes yet. Create one to get started!</Text>
+            </View>
+          ) : (
+            // Grid view — notes are positioned explicitly (rather than via
+            // FlatList's numColumns, which only supports uniform cell sizes)
+            // so a note with colSpan/rowSpan > 1 can occupy a rectangle of
+            // cells instead of exactly one. See layoutNotesGrid above.
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+              <View
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  height: gridLayout!.totalRows * (cardSize + GRID_GAP) - GRID_GAP,
+                }}
+              >
+                {gridLayout!.placements.map(({ note, row, col, colSpan, rowSpan }) => {
+                  const width = cardSize * colSpan + GRID_GAP * (colSpan - 1);
+                  const height = cardSize * rowSpan + GRID_GAP * (rowSpan - 1);
+                  return (
+                    <View
+                      key={note.id}
+                      style={{
+                        position: 'absolute',
+                        left: col * (cardSize + GRID_GAP),
+                        top: row * (cardSize + GRID_GAP),
+                        width,
+                        height,
+                      }}
+                    >
+                      <NoteCard
+                        note={note}
+                        onEdit={() => (note.tabId === 'trash' ? openReadOnly(note) : editNote(note))}
+                        onDelete={() => deleteNote(note.id)}
+                        onLongPress={() => openViewOnlyModal(note)}
+                        cardWidth={width}
+                        cardHeight={height}
+                        hasScreenBackgroundImage={hasScreenBackgroundImage}
+                      />
+                    </View>
+                  );
+                })}
               </View>
-            }
-          />
+            </ScrollView>
+          )}
         </View>
       </View>
 
@@ -870,6 +1026,11 @@ const MainScreen = () => {
         onChecklistSortChange={setSelectedChecklistSort}
         selectedChecklistTextMode={selectedChecklistTextMode}
         onChecklistTextModeChange={setSelectedChecklistTextMode}
+        selectedColSpan={selectedColSpan}
+        onColSpanChange={setSelectedColSpan}
+        selectedRowSpan={selectedRowSpan}
+        onRowSpanChange={setSelectedRowSpan}
+        maxColSpan={settings.gridColumns}
         restoreChecklistState={settings.restoreChecklistState}
         checklistSnapshot={checklistSnapshot}
         onChecklistSnapshotChange={setChecklistSnapshot}
@@ -951,9 +1112,49 @@ const MainScreen = () => {
         notes={notes}
         tabs={tabs}
         onImportNotes={(importedNotes, importedTabs) => {
+          // Any custom (non built-in) tab from the backup that doesn't
+          // already exist locally (matched by id) gets added as-is —
+          // built-in tabs (all/general/archived/trash) always exist
+          // already, so they're never (re)created here.
+          const existingTabIds = new Set(tabs.map(t => t.id));
+          const newTabs = importedTabs.filter(t => !isBuiltInTabId(t.id) && !existingTabIds.has(t.id));
+
+          setTabs(prev => {
+            // For a tab that already exists locally (including built-ins
+            // like General), only fill in styling fields that are
+            // currently unset — an existing customization is never
+            // overwritten by the import.
+            const merged = prev.map(t => {
+              const imported = importedTabs.find(it => it.id === t.id);
+              if (!imported) return t;
+              return {
+                ...t,
+                color: t.color || imported.color,
+                textColor: t.textColor || imported.textColor,
+                backgroundImageUrl: t.backgroundImageUrl || imported.backgroundImageUrl,
+                screenBackgroundImageUrl: t.screenBackgroundImageUrl || imported.screenBackgroundImageUrl,
+              };
+            });
+            return [...merged, ...newTabs];
+          });
+
+          // Every tab id a note could validly belong to after the merge
+          // above (existing tabs + any brand-new custom ones just added).
+          const validTabIds = new Set([...tabs.map(t => t.id), ...newTabs.map(t => t.id)]);
+
           setNotes(prev => {
             const existingIds = new Set(prev.map(n => n.id));
-            const newOnes = importedNotes.filter(n => !existingIds.has(n.id));
+            const newOnes = importedNotes
+              .filter(n => !existingIds.has(n.id))
+              .map(n => {
+                // "All" is a virtual aggregator, not a real tab a note can
+                // live in — and any tabId that doesn't resolve to a tab we
+                // actually have (missing entirely, from an older
+                // notes-only export, or referencing a tab absent from this
+                // particular backup) falls back to General instead.
+                const tabId = n.tabId && n.tabId !== 'all' && validTabIds.has(n.tabId) ? n.tabId : 'general';
+                return { ...n, tabId };
+              });
             return [...prev, ...newOnes];
           });
         }}

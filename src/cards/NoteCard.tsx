@@ -13,14 +13,22 @@ type NoteCardProps = {
   onDelete: () => void;
   onLongPress?: (event: GestureResponderEvent) => void;
   cardSize?: number;
+  // Independent width/height overrides for a spanning card (colSpan/rowSpan
+  // > 1 in the grid). Each falls back to cardSize when omitted, so every
+  // existing call site that only passes cardSize keeps rendering a square
+  // card exactly as before.
+  cardWidth?: number;
+  cardHeight?: number;
   // True when the active tab has a screen wallpaper set (Tab.screenBackgroundImageUrl).
   // The neumorphic shadow pair reads as visual noise on top of a busy photo,
   // so it's dropped entirely in that case rather than tuned per-photo.
   hasScreenBackgroundImage?: boolean;
 };
 
-const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize, hasScreenBackgroundImage = false }: NoteCardProps) => {
+const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize, cardWidth, cardHeight, hasScreenBackgroundImage = false }: NoteCardProps) => {
   const size = propCardSize ?? CARD_SIZE;
+  const width = cardWidth ?? size;
+  const height = cardHeight ?? size;
   const getTextStyle = (): any => {
     const baseStyle: any = { fontFamily: note.fontFamily, color: note.textColor };
     if (note.textStyle === 'bold') {
@@ -44,10 +52,10 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
   // How much vertical room the preview actually has to work with: the card's
   // own padding (12 top + 12 bottom), the note's own margins, and cardContent's
   // marginBottom — same box model used when rendering, so this stays accurate
-  // across grid column counts and per-note margin settings.
+  // across grid column counts, row spans, and per-note margin settings.
   const availableHeight = Math.max(
     0,
-    size - 24 - cardMargin.paddingTop - cardMargin.paddingBottom - 8
+    height - 24 - cardMargin.paddingTop - cardMargin.paddingBottom - 8
   );
 
   const renderPreview = () => {
@@ -156,7 +164,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
       radius={NEU_RADIUS.lg}
       backgroundColor={(FrameComponent || resolvedImageUrl) ? 'transparent' : note.color}
       noShadow={hasScreenBackgroundImage}
-      style={{ width: size, height: size, padding: 12, overflow: 'hidden' }}
+      style={{ width, height, padding: 12, overflow: 'hidden' }}
       onPress={onEdit}
       onLongPress={onLongPress}
       delayLongPress={200}
@@ -164,7 +172,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
       {FrameComponent && (
         <>
           <View style={styles.cardSvgBackground} pointerEvents="none">
-            <FrameComponent size={size} />
+            <FrameComponent size={Math.max(width, height)} />
           </View>
           <View style={styles.cardSvgBlurOverlay} pointerEvents="none" />
         </>

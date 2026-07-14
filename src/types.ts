@@ -49,6 +49,12 @@ export interface AppSettings {
   stickieStyles: StickieStyle[];
   defaultStyleId?: string;
   defaultTabId?: string;
+  // Whether the "All" pill (an aggregate view across every non-trash,
+  // non-archived tab) shows in the tab rail. Purely a view toggle — "All"
+  // is never a tab a note actually belongs to; see Note.tabId and
+  // MainScreen's resolveTabId helper. Defaults to true so existing users
+  // see no change until they opt to hide it.
+  showAllTab: boolean;
   // App-wide PIN lock — when enabled, the app shows PinLockScreen on launch
   // (see components/PinLockScreen.tsx) and requires appPin to be entered
   // before the main screen becomes accessible. Stored in plaintext, same as
@@ -88,6 +94,15 @@ export const DEFAULT_ITEM_SPACING: ItemSpacing = { top: 6, bottom: 6 };
 // have discrete items the way checklists do.
 export const DEFAULT_LINE_SPACING = 6;
 
+// How many grid columns/rows a note's card occupies in the main grid (list
+// view ignores these — every row is single-column there). Clamped at render
+// time to [1, settings.gridColumns] for columns and [1, MAX_NOTE_ROW_SPAN]
+// for rows, so a note set to span 3 columns still renders sanely if the grid
+// is later switched down to 2 columns.
+export const DEFAULT_COL_SPAN = 1;
+export const DEFAULT_ROW_SPAN = 1;
+export const MAX_NOTE_ROW_SPAN = 3;
+
 export interface Note {
   id: string;
   title: string;
@@ -111,6 +126,11 @@ export interface Note {
   lineSpacing?: number;
   checklistSort?: ChecklistSort;
   checklistTextMode?: ChecklistTextMode;
+  // How many grid columns/rows this note's card should occupy in the main
+  // grid. Defaults to 1x1 (a normal single-cell card) when unset. See the
+  // DEFAULT_COL_SPAN/DEFAULT_ROW_SPAN/MAX_NOTE_ROW_SPAN constants above.
+  colSpan?: number;
+  rowSpan?: number;
   // Set when the note is swiped into Trash — used to auto-purge after 30 days.
   deletedAt?: number;
   // Set when the note is swiped into Archived — informational, not required

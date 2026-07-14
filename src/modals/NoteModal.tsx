@@ -15,7 +15,7 @@ import {
   Keyboard,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, ChecklistSort, ChecklistTextMode } from '../types';
+import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, ChecklistSort, ChecklistTextMode, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN } from '../types';
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { FRAME_COMPONENTS } from '../frames';
 import SwipeToAction from '../components/SwipeToAction';
@@ -132,6 +132,16 @@ type NoteModalProps = {
   onChecklistSortChange: (sort: ChecklistSort) => void;
   selectedChecklistTextMode: ChecklistTextMode;
   onChecklistTextModeChange: (mode: ChecklistTextMode) => void;
+  // How many grid columns/rows this note occupies in the main grid. Optional
+  // (default 1/1/3) since a StickieStyle template (styleEditorMode) has no
+  // grid position of its own — the Grid Size control is hidden in that mode,
+  // so those callers never need to pass these.
+  selectedColSpan?: number;
+  onColSpanChange?: (span: number) => void;
+  selectedRowSpan?: number;
+  onRowSpanChange?: (span: number) => void;
+  // Max column span allowed — pass the current settings.gridColumns (2 or 3).
+  maxColSpan?: number;
   // When true (default), converting the note away from checklist and back
   // remembers and restores the previous items' checked state and order
   // instead of rebuilding a fresh, all-unchecked list from the text.
@@ -181,6 +191,8 @@ interface StylingSnapshot {
   selectedLineSpacing: number;
   selectedChecklistSort: ChecklistSort;
   selectedChecklistTextMode: ChecklistTextMode;
+  selectedColSpan: number;
+  selectedRowSpan: number;
   checklistSnapshot: ChecklistItem[] | undefined;
 }
 
@@ -203,6 +215,11 @@ const NoteModal = ({
   selectedLineSpacing, onLineSpacingChange,
   selectedChecklistSort, onChecklistSortChange,
   selectedChecklistTextMode, onChecklistTextModeChange,
+  selectedColSpan = DEFAULT_COL_SPAN,
+  onColSpanChange = () => {},
+  selectedRowSpan = DEFAULT_ROW_SPAN,
+  onRowSpanChange = () => {},
+  maxColSpan = 3,
   restoreChecklistState = true,
   checklistSnapshot,
   onChecklistSnapshotChange,
@@ -220,10 +237,14 @@ const NoteModal = ({
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [stylingSnapshot, setStylingSnapshot] = useState<StylingSnapshot | null>(null);
-  // Which checklist item (if any) currently has keyboard focus. While an item
-  // is focused we skip live re-sorting so the row doesn't jump under the user's
-  // finger/cursor as they type (e.g. under alphabetical sort).
+  // Tracks which checklist item (if any) currently has keyboard focus. While an item
+  // is focused we freeze *that item's own* sort key (its text/completed value at the
+  // moment it gained focus) so it doesn't jump position mid-keystroke — every other
+  // item still re-sorts live against the current selectedChecklistSort. Previously
+  // this disabled sorting for the *entire* list while any item was focused, which
+  // made changing the Order setting look broken any time your cursor was in a field.
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const editingSnapshotRef = useRef<ChecklistItem | null>(null);
   // Tracked so swipe-to-delete/archive only engages once the keyboard is
   // dismissed — otherwise a horizontal drag on the text input would fight
   // with cursor placement / text selection.
@@ -275,6 +296,7 @@ const NoteModal = ({
       setShowStyling(false);
       setStylingSnapshot(null);
       setEditingItemId(null);
+      editingSnapshotRef.current = null;
     }
   }, [visible]);
 
@@ -292,9 +314,14 @@ const NoteModal = ({
   }, [visible, styleEditorMode]);
 
   // The styling bar and the keyboard should never be on screen together —
-  // dismiss the keyboard any time the styling bar is opened.
+  // dismiss the keyboard any time the styling bar is opened. Also belt-and-
+  // suspenders clear the focus-freeze lock (mirrors openStyling below).
   useEffect(() => {
-    if (showStyling) Keyboard.dismiss();
+    if (showStyling) {
+      Keyboard.dismiss();
+      setEditingItemId(null);
+      editingSnapshotRef.current = null;
+    }
   }, [showStyling]);
 
   // Track keyboard visibility for the swipe-enabled gate above.
@@ -404,19 +431,27 @@ const NoteModal = ({
   };
 
   const sortItems = (list: ChecklistItem[]): ChecklistItem[] => {
+    // For the item currently being typed into, use the values it had at the
+    // moment it gained focus (rather than its live, changing text/completed)
+    // so its own position holds still while the user is mid-keystroke.
+    const sortKeyOf = (it: ChecklistItem): ChecklistItem => {
+      if (editingItemId && it.id === editingItemId && editingSnapshotRef.current?.id === it.id) {
+        return editingSnapshotRef.current;
+      }
+      return it;
+    };
     if (selectedChecklistSort === 'unchecked-first')
-      return [...list].sort((a, b) => Number(a.completed) - Number(b.completed));
+      return [...list].sort((a, b) => Number(sortKeyOf(a).completed) - Number(sortKeyOf(b).completed));
     if (selectedChecklistSort === 'alphabetical')
-      return [...list].sort((a, b) => a.text.localeCompare(b.text));
+      return [...list].sort((a, b) => sortKeyOf(a).text.localeCompare(sortKeyOf(b).text));
     return list;
   };
 
-  // The list actually rendered: while an item is being typed into, keep items
-  // in their natural (insertion) order so the row doesn't reshuffle mid-keystroke.
-  // Once nothing is focused, fall back to the user's chosen sort order.
-  const displayedChecklistItems: ChecklistItem[] = (editingItemId
-    ? [items[0], ...items.slice(1)]
-    : [items[0], ...sortItems(items.slice(1))]
+  // The list actually rendered. Sorting is always applied — the currently
+  // focused item (if any) just holds its position via the frozen sort key
+  // above instead of the whole list falling back to insertion order.
+  const displayedChecklistItems: ChecklistItem[] = (
+    [items[0], ...sortItems(items.slice(1))]
   ).filter(Boolean) as ChecklistItem[];
 
   // ── Text style ───────────────────────────────────────────────────────────────
@@ -452,12 +487,14 @@ const NoteModal = ({
 
   const openStyling = () => {
     Keyboard.dismiss();
+    setEditingItemId(null);
     setBarScrollX(0);
     setStylingSnapshot({
       contentType, content,
       selectedColor, selectedTextColor, selectedFont, selectedFontSize,
       selectedTextStyle, useSvgBackground, backgroundImageUrl, selectedMargins, selectedItemSpacing, selectedLineSpacing, selectedChecklistSort,
       selectedChecklistTextMode,
+      selectedColSpan, selectedRowSpan,
       checklistSnapshot: checklistSnapshotRef.current,
     });
     setShowStyling(true);
@@ -485,6 +522,8 @@ const NoteModal = ({
       onLineSpacingChange(stylingSnapshot.selectedLineSpacing);
       onChecklistSortChange(stylingSnapshot.selectedChecklistSort);
       onChecklistTextModeChange(stylingSnapshot.selectedChecklistTextMode);
+      onColSpanChange(stylingSnapshot.selectedColSpan);
+      onRowSpanChange(stylingSnapshot.selectedRowSpan);
       checklistSnapshotRef.current = stylingSnapshot.checklistSnapshot;
       if (stylingSnapshot.checklistSnapshot) onChecklistSnapshotChange?.(stylingSnapshot.checklistSnapshot);
     }
@@ -495,7 +534,7 @@ const NoteModal = ({
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={() => {}}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         enabled={Platform.OS === 'ios'}
@@ -507,8 +546,11 @@ const NoteModal = ({
             over the note's content area. */}
         <SwipeToAction enabled={swipeEnabled} onSwipeLeft={onSwipeDelete} onSwipeRight={onSwipeArchive}>
 
-        {/* Semi-transparent backdrop — tapping it dismisses the modal */}
-        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={onCancel} />
+        {/* Semi-transparent backdrop — no longer dismisses on tap; the modal
+            is only closed via the footer's Confirm/Cancel (or the ✕ in
+            viewOnly mode). The Pressable still absorbs touches so they don't
+            fall through to whatever is behind the modal. */}
+        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={() => {}} />
 
         {/* Note card — 50% height; when styling open, centers within the top 3/4 above the bar */}
         <View
@@ -665,8 +707,14 @@ const NoteModal = ({
                             }}
                             multiline={selectedChecklistTextMode === 'wrap'}
                             blurOnSubmit={false}
-                            onFocus={() => setEditingItemId(item.id)}
-                            onBlur={() => setEditingItemId(prev => (prev === item.id ? null : prev))}
+                            onFocus={() => {
+                              editingSnapshotRef.current = item;
+                              setEditingItemId(item.id);
+                            }}
+                            onBlur={() => {
+                              setEditingItemId(prev => (prev === item.id ? null : prev));
+                              if (editingSnapshotRef.current?.id === item.id) editingSnapshotRef.current = null;
+                            }}
                             onSubmitEditing={() => addItemAfter(item.id)}
                             onKeyPress={({ nativeEvent }) => {
                               if (nativeEvent.key === 'Enter' && selectedChecklistTextMode === 'wrap') {
@@ -1086,6 +1134,56 @@ const NoteModal = ({
                   </View>
                 </>
               )}
+
+              {/* ── Grid Size (how many grid cells this note spans) ──
+                  Always the rightmost section, regardless of content type.
+                  Hidden in styleEditorMode: a StickieStyle is a reusable
+                  look-and-feel template, not tied to any grid position. */}
+              {!styleEditorMode && (
+                <>
+                  <View style={barStyles.vDivider} />
+                  <View style={[barStyles.section, { width: 150 }]}>
+                    <Text style={barStyles.sLabel}>Grid Size</Text>
+                    <View style={barStyles.marginRow}>
+                      <Text style={barStyles.marginLabel}>Columns</Text>
+                      <NeuView inset radius={9} style={barStyles.stepper}>
+                        <TouchableOpacity
+                          style={barStyles.stepBtn}
+                          onPress={() => onColSpanChange(Math.max(1, selectedColSpan - 1))}
+                        >
+                          <Text style={barStyles.stepBtnText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={barStyles.stepVal}>{selectedColSpan}</Text>
+                        <TouchableOpacity
+                          style={barStyles.stepBtn}
+                          onPress={() => onColSpanChange(Math.min(maxColSpan, selectedColSpan + 1))}
+                        >
+                          <Text style={barStyles.stepBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </NeuView>
+                    </View>
+                    <View style={barStyles.marginRow}>
+                      <Text style={barStyles.marginLabel}>Rows</Text>
+                      <NeuView inset radius={9} style={barStyles.stepper}>
+                        <TouchableOpacity
+                          style={barStyles.stepBtn}
+                          onPress={() => onRowSpanChange(Math.max(1, selectedRowSpan - 1))}
+                        >
+                          <Text style={barStyles.stepBtnText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={barStyles.stepVal}>{selectedRowSpan}</Text>
+                        <TouchableOpacity
+                          style={barStyles.stepBtn}
+                          onPress={() => onRowSpanChange(Math.min(MAX_NOTE_ROW_SPAN, selectedRowSpan + 1))}
+                        >
+                          <Text style={barStyles.stepBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </NeuView>
+                    </View>
+                    <Text style={barStyles.gridSizeHint}>Only affects Grid view</Text>
+                  </View>
+                </>
+              )}
             </ScrollView>
               <View style={barStyles.dotsRow}>
                 {(() => {
@@ -1368,6 +1466,7 @@ const barStyles = StyleSheet.create({
     marginBottom: 6,
   },
   marginLabel: { fontSize: 11.5, fontWeight: '500', color: '#3A4358', width: 42 },
+  gridSizeHint: { fontSize: 10, color: '#8891A5', marginTop: 6, fontStyle: 'italic' },
 });
 
 // ── Discard confirmation overlay styles ───────────────────────────────────────

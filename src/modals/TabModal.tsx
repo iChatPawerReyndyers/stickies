@@ -9,10 +9,21 @@ import {
   TextInput,
   ScrollView,
   StyleSheet,
+  Dimensions,
 } from 'react-native';
 import { Tab } from '../types';
 import { getHexInputValue, normalizeHexColor } from '../utils/color';
 import { resolveImageUrl } from '../utils/googleDriveImage';
+import { NeuView } from '../components/Neumorphic';
+import { getNeuPalette, NEU_ACCENT, NEU_DANGER, NEU_RADIUS } from '../theme/neumorphic';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+// A fixed (not max-) height, same pattern NoteModal.tsx already uses
+// successfully for its own card (MODAL_HEIGHT = SCREEN_HEIGHT * 0.5).
+// maxHeight-only containers don't hand a definite size down to a flex:1
+// ScrollView in Yoga, so a fixed height gives it something concrete to
+// flex against, letting it reliably fill the remaining space and scroll.
+const MODAL_HEIGHT = SCREEN_HEIGHT * 0.72;
 
 type TabModalProps = {
   visible: boolean;
@@ -29,12 +40,15 @@ type TabModalProps = {
   ) => void;
   onDelete: (id?: string) => void;
   onCancel: () => void;
+  isDark?: boolean;
 };
 
 // Keeps the color fields strictly to valid hex digits while still allowing shorthand input.
 const sanitizeHex = (text: string) => text.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
 
-const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabModalProps) => {
+const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark = false }: TabModalProps) => {
+  const p = getNeuPalette(isDark);
+
   const [name, setName] = useState(editing?.name || '');
   const [colorHex, setColorHex] = useState(getHexInputValue(editing?.color));
   const [textColorHex, setTextColorHex] = useState(getHexInputValue(editing?.textColor));
@@ -87,129 +101,157 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabMod
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
       <Pressable style={modalStyles.overlay} onPress={onCancel}>
-        <Pressable style={modalStyles.modalCard}>
+        {/* Flat surface, no NeuView here on purpose — the raised dual-shadow
+            reads as a harsh white bloom against the dark backdrop. Matches
+            how PinSetupModal / StickieStyleNameModal already do their modal
+            cards: flat p.base background, no shadow, inputs inside still
+            carry the neumorphic inset treatment. */}
+        <Pressable
+          style={[
+            modalStyles.modalCard,
+            { backgroundColor: p.base, height: MODAL_HEIGHT },
+          ]}
+        >
           <View style={modalStyles.topToolbar}>
-            <Text style={modalStyles.headerLabel}>{editing ? 'Edit tab:' : 'New tab:'}</Text>
+            <Text style={[modalStyles.headerLabel, { color: p.textSecondary }]}>{editing ? 'Edit tab:' : 'New tab:'}</Text>
           </View>
 
-          <View style={modalStyles.dividerLine} />
+          <View style={[modalStyles.dividerLine, { backgroundColor: `${p.darkShadow}55` }]} />
 
-          <ScrollView contentContainerStyle={modalStyles.formBody} bounces={false} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={modalStyles.scrollArea}
+            contentContainerStyle={modalStyles.formBody}
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={modalStyles.formGroup}>
-              <Text style={modalStyles.itemLabel}>name</Text>
-              <TextInput
-                style={modalStyles.textInput}
-                placeholder="Enter name"
-                placeholderTextColor="#C7C7CC"
-                value={name}
-                onChangeText={setName}
-                autoCorrect={false}
-              />
+              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>name</Text>
+              <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm}>
+                <TextInput
+                  style={[modalStyles.textInput, { color: p.textPrimary }]}
+                  placeholder="Enter name"
+                  placeholderTextColor={p.textSecondary}
+                  value={name}
+                  onChangeText={setName}
+                  autoCorrect={false}
+                />
+              </NeuView>
             </View>
 
             <View style={modalStyles.formGroup}>
-              <Text style={modalStyles.itemLabel}>background</Text>
+              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>background</Text>
               <View style={modalStyles.colorRow}>
-                <View style={[modalStyles.colorSwatch, { backgroundColor: previewColor, overflow: 'hidden' }]}>
+                <NeuView isDark={isDark} radius={9} backgroundColor={previewColor} style={modalStyles.colorSwatch}>
                   {!!resolvedPreviewImage && (
                     <Image source={{ uri: resolvedPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                   )}
-                </View>
-                <TextInput
-                  style={[modalStyles.textInput, modalStyles.colorInput]}
-                  placeholder="e.g. FF5733"
-                  placeholderTextColor="#C7C7CC"
-                  value={colorHex}
-                  onChangeText={handleColorChange}
-                  maxLength={8}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                />
+                </NeuView>
+                <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                  <TextInput
+                    style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                    placeholder="e.g. FF5733"
+                    placeholderTextColor={p.textSecondary}
+                    value={colorHex}
+                    onChangeText={handleColorChange}
+                    maxLength={8}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
+                </NeuView>
               </View>
             </View>
 
             <View style={modalStyles.formGroup}>
-              <Text style={modalStyles.itemLabel}>tab label image</Text>
-              <Text style={modalStyles.itemHint}>Shown behind the tab pill itself. Google Drive link ("Anyone with the link") or any public image URL. Overrides the color above.</Text>
+              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>tab label image</Text>
+              <Text style={[modalStyles.itemHint, { color: p.textSecondary }]}>Shown behind the tab pill itself. Google Drive link ("Anyone with the link") or any public image URL. Overrides the color above.</Text>
               <View style={modalStyles.colorRow}>
                 {!!resolvedPreviewImage && (
-                  <View style={[modalStyles.colorSwatch, { overflow: 'hidden' }]}>
+                  <NeuView isDark={isDark} radius={9} style={modalStyles.colorSwatch}>
                     <Image source={{ uri: resolvedPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                  </View>
+                  </NeuView>
                 )}
-                <TextInput
-                  style={[modalStyles.textInput, modalStyles.colorInput]}
-                  placeholder="Paste a link…"
-                  placeholderTextColor="#C7C7CC"
-                  value={backgroundImageUrl}
-                  onChangeText={setBackgroundImageUrl}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
+                <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                  <TextInput
+                    style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                    placeholder="Paste a link…"
+                    placeholderTextColor={p.textSecondary}
+                    value={backgroundImageUrl}
+                    onChangeText={setBackgroundImageUrl}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </NeuView>
               </View>
             </View>
 
             <View style={modalStyles.formGroup}>
-              <Text style={modalStyles.itemLabel}>main screen background image</Text>
-              <Text style={modalStyles.itemHint}>Shown as the app's wallpaper behind the notes grid whenever this tab is open. Independent of the tab label image above — set one, both, or neither.</Text>
+              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>main screen background image</Text>
+              <Text style={[modalStyles.itemHint, { color: p.textSecondary }]}>Shown as the app's wallpaper behind the notes grid whenever this tab is open. Independent of the tab label image above — set one, both, or neither.</Text>
               <View style={modalStyles.colorRow}>
                 {!!resolvedScreenPreviewImage && (
-                  <View style={[modalStyles.colorSwatch, { overflow: 'hidden' }]}>
+                  <NeuView isDark={isDark} radius={9} style={modalStyles.colorSwatch}>
                     <Image source={{ uri: resolvedScreenPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                  </View>
+                  </NeuView>
                 )}
-                <TextInput
-                  style={[modalStyles.textInput, modalStyles.colorInput]}
-                  placeholder="Paste a link…"
-                  placeholderTextColor="#C7C7CC"
-                  value={screenBackgroundImageUrl}
-                  onChangeText={setScreenBackgroundImageUrl}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
+                <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                  <TextInput
+                    style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                    placeholder="Paste a link…"
+                    placeholderTextColor={p.textSecondary}
+                    value={screenBackgroundImageUrl}
+                    onChangeText={setScreenBackgroundImageUrl}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </NeuView>
               </View>
             </View>
 
             <View style={modalStyles.formGroup}>
-              <Text style={modalStyles.itemLabel}>label color</Text>
+              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>label color</Text>
               <View style={modalStyles.colorRow}>
-                <View style={[modalStyles.colorSwatch, { backgroundColor: previewTextColor }]} />
-                <TextInput
-                  style={[modalStyles.textInput, modalStyles.colorInput]}
-                  placeholder="e.g. FFFFFF"
-                  placeholderTextColor="#C7C7CC"
-                  value={textColorHex}
-                  onChangeText={handleTextColorChange}
-                  maxLength={8}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                />
+                <NeuView isDark={isDark} radius={9} backgroundColor={previewTextColor} style={modalStyles.colorSwatch} />
+                <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                  <TextInput
+                    style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                    placeholder="e.g. FFFFFF"
+                    placeholderTextColor={p.textSecondary}
+                    value={textColorHex}
+                    onChangeText={handleTextColorChange}
+                    maxLength={8}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
+                </NeuView>
               </View>
             </View>
 
             {showAfterField && (
               <View style={modalStyles.formGroup}>
-                <Text style={modalStyles.itemLabel}>place after</Text>
+                <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>place after</Text>
 
-                <TouchableOpacity
-                  style={modalStyles.dropdownTrigger}
-                  onPress={() => setIsDropdownOpen(prev => !prev)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={modalStyles.dropdownTriggerText}>
-                    {afterTabId ? tabs.find(tab => tab.id === afterTabId)?.name : 'After general'}
-                  </Text>
-                  <Text style={modalStyles.dropdownArrow}>{isDropdownOpen ? '▲' : '▼'}</Text>
-                </TouchableOpacity>
+                <NeuView isDark={isDark} inset={!isDropdownOpen} radius={NEU_RADIUS.sm} backgroundColor={isDropdownOpen ? p.base : undefined}>
+                  <TouchableOpacity
+                    style={modalStyles.dropdownTrigger}
+                    onPress={() => setIsDropdownOpen(prev => !prev)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[modalStyles.dropdownTriggerText, { color: p.textPrimary }]}>
+                      {afterTabId ? tabs.find(tab => tab.id === afterTabId)?.name : 'After general'}
+                    </Text>
+                    <Text style={[modalStyles.dropdownArrow, { color: p.textSecondary }]}>{isDropdownOpen ? '▲' : '▼'}</Text>
+                  </TouchableOpacity>
+                </NeuView>
 
                 {isDropdownOpen && (
-                  <View style={modalStyles.dropdownOptionsContainer}>
+                  <NeuView isDark={isDark} radius={NEU_RADIUS.sm} style={modalStyles.dropdownOptionsContainer}>
                     {afterOptions.map(tab => (
                       <TouchableOpacity
                         key={tab.id}
                         style={[
                           modalStyles.dropdownOptionRow,
-                          afterTabId === tab.id && modalStyles.selectedOptionRow,
+                          { borderColor: `${p.darkShadow}40` },
                         ]}
                         onPress={() => {
                           setAfterTabId(tab.id);
@@ -218,32 +260,54 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel }: TabMod
                       >
                         <Text style={[
                           modalStyles.optionText,
-                          afterTabId === tab.id && modalStyles.selectedOptionText,
+                          { color: p.textPrimary },
+                          afterTabId === tab.id && { color: NEU_ACCENT, fontWeight: '700' },
                         ]}>
                           {tab.name}
                         </Text>
                       </TouchableOpacity>
                     ))}
-                  </View>
+                  </NeuView>
                 )}
               </View>
             )}
+          </ScrollView>
 
+          {/* Footer — plain TouchableOpacity buttons, deliberately NOT
+              NeuPressable here. NeuPressable only forwards `style` to its
+              inner NeuView, never to the outer Pressable — harmless for a
+              button that sizes to its own content, but it means flex:1
+              never reaches the actual flex-participating element, which is
+              exactly what was collapsing this row to invisible. Same fix
+              StickieStyleNameModal.tsx already uses for its own Cancel/Save. */}
+          <View style={modalStyles.footer}>
             <View style={modalStyles.actionButtonRow}>
-              <TouchableOpacity style={[modalStyles.btn, modalStyles.btnCancel]} onPress={onCancel}>
+              <TouchableOpacity
+                style={[modalStyles.btn, { backgroundColor: p.insetBase }]}
+                onPress={onCancel}
+                activeOpacity={0.8}
+              >
                 <Text style={modalStyles.btnCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[modalStyles.btn, modalStyles.btnSave]} onPress={handleSave}>
+              <TouchableOpacity
+                style={[modalStyles.btn, { backgroundColor: NEU_ACCENT }]}
+                onPress={handleSave}
+                activeOpacity={0.8}
+              >
                 <Text style={modalStyles.btnSaveText}>{editing ? 'Save' : 'Create'}</Text>
               </TouchableOpacity>
             </View>
 
             {editing?.id && (
-              <TouchableOpacity style={modalStyles.deleteRow} onPress={() => onDelete(editing.id)}>
+              <TouchableOpacity
+                style={[modalStyles.deleteRow, { backgroundColor: p.insetBase }]}
+                onPress={() => onDelete(editing.id)}
+                activeOpacity={0.8}
+              >
                 <Text style={modalStyles.deleteRowText}>Delete Tab</Text>
               </TouchableOpacity>
             )}
-          </ScrollView>
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -260,61 +324,54 @@ const modalStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalCard: {
-    width: 310,
-    maxHeight: '80%',
-    backgroundColor: '#FFFFFF',
+    width: '86%',
+    maxWidth: 340,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
-    elevation: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
     paddingVertical: 12,
+    overflow: 'hidden',
   },
   topToolbar: {
-    paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingHorizontal: 22,
+    paddingTop: 10,
     paddingBottom: 8,
   },
   headerLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#8E8E93',
   },
   dividerLine: {
     height: 1,
-    backgroundColor: '#E5E5EA',
     marginHorizontal: 20,
-    marginVertical: 4,
+    marginBottom: 4,
+  },
+  // Works reliably because modalCard now has a definite `height` (not
+  // maxHeight), so this can actually flex against it and cede space to the
+  // footer below, same as NoteModal.tsx's content area.
+  scrollArea: {
+    flex: 1,
   },
   formBody: {
     paddingHorizontal: 22,
     paddingTop: 8,
+    paddingBottom: 4,
   },
   formGroup: {
     marginVertical: 8,
   },
   itemLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#1C1C1E',
     marginBottom: 6,
   },
   itemHint: {
     fontSize: 11,
-    color: '#8E8E93',
     marginBottom: 6,
     lineHeight: 15,
   },
   textInput: {
     height: 42,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 10,
     paddingHorizontal: 12,
     fontSize: 15,
-    color: '#000000',
   },
   colorRow: {
     flexDirection: 'row',
@@ -324,17 +381,13 @@ const modalStyles = StyleSheet.create({
   colorSwatch: {
     width: 28,
     height: 28,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    overflow: 'hidden',
   },
   colorInput: {
     flex: 1,
   },
   dropdownTrigger: {
     height: 42,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 10,
     paddingHorizontal: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -342,76 +395,59 @@ const modalStyles = StyleSheet.create({
   },
   dropdownTriggerText: {
     fontSize: 15,
-    color: '#000000',
   },
   dropdownArrow: {
     fontSize: 10,
-    color: '#8E8E93',
   },
   dropdownOptionsContainer: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5E5EA',
-    borderWidth: 1,
-    borderRadius: 10,
-    marginTop: 4,
+    marginTop: 8,
     overflow: 'hidden',
   },
   dropdownOptionRow: {
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E5E5EA',
-  },
-  selectedOptionRow: {
-    backgroundColor: '#E8F2FF',
   },
   optionText: {
     fontSize: 15,
-    color: '#1C1C1E',
   },
-  selectedOptionText: {
-    color: '#007AFF',
-    fontWeight: '600',
+  footer: {
+    paddingHorizontal: 22,
+    paddingTop: 10,
   },
   actionButtonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
-    paddingBottom: 6,
   },
   btn: {
-    flex: 0.46,
-    height: 42,
-    borderRadius: 10,
+    flex: 1,
+    height: 46,
+    borderRadius: NEU_RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  btnCancel: {
-    backgroundColor: '#F2F2F7',
+    marginHorizontal: 4,
   },
   btnCancelText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#FF3B30',
-  },
-  btnSave: {
-    backgroundColor: '#007AFF',
+    fontWeight: '700',
+    color: NEU_DANGER,
   },
   btnSaveText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
+  // Same inset/danger treatment as the Cancel button above, per earlier request.
   deleteRow: {
-    marginTop: 16,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#FFEAEA',
+    marginTop: 12,
+    marginHorizontal: 4,
+    paddingVertical: 13,
+    borderRadius: NEU_RADIUS.sm,
     alignItems: 'center',
   },
   deleteRowText: {
-    color: '#FF3B30',
-    fontWeight: '600',
+    color: NEU_DANGER,
+    fontWeight: '700',
     fontSize: 15,
   },
 });

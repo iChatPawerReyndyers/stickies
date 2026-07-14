@@ -61,6 +61,10 @@ const SettingsModal = ({
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   const handleExport = async () => {
+    // `tabs` already carries each tab's styling (color, textColor,
+    // backgroundImageUrl, screenBackgroundImageUrl) alongside its id/name,
+    // so a round-trip import can restore both which tab a note belongs to
+    // and how that tab looks.
     const payload = JSON.stringify({ notes, tabs }, null, 2);
     try {
       await Share.share({ message: payload, title: 'Stickies Backup' });
@@ -72,14 +76,23 @@ const SettingsModal = ({
   const handleImportConfirm = () => {
     try {
       const parsed = JSON.parse(importText);
+      // Backward compatible with older backups that were just a bare array
+      // of notes with no tabs at all (Array.isArray(parsed)) as well as the
+      // current `{ notes, tabs }` shape. Either way, missing/absent tabs
+      // simply becomes an empty list — MainScreen's import handler then
+      // falls each note back to the General tab when its tabId doesn't
+      // resolve to a tab we actually have.
       const importedNotes: Note[] = Array.isArray(parsed)
         ? parsed
         : Array.isArray(parsed.notes) ? parsed.notes : null;
       const importedTabs: Tab[] = Array.isArray(parsed.tabs) ? parsed.tabs : [];
       if (!importedNotes) throw new Error();
+      const builtInIds = new Set(['all', 'general', 'archived', 'trash']);
+      const customTabCount = importedTabs.filter(t => !builtInIds.has(t.id)).length;
+      const tabsNote = customTabCount > 0 ? ` and ${customTabCount} tab(s)` : '';
       Alert.alert(
         'Confirm Import',
-        `This will merge ${importedNotes.length} note(s) into your current notes. Continue?`,
+        `This will merge ${importedNotes.length} note(s)${tabsNote} into your current notes. Notes with no matching tab will go into General. Continue?`,
         [
           { text: 'Cancel', onPress: () => {} },
           {
@@ -285,7 +298,7 @@ const SettingsModal = ({
               </NeuView>
             </Row>
 
-            <Row last>
+            <Row>
               <RowLabel label="Grid columns" hint={isListView ? 'Only applies in grid view' : undefined} />
               {/* pointerEvents has to live on a plain View — NeuView's props
                   don't include it (and it isn't spread onto the inner View),
@@ -309,6 +322,15 @@ const SettingsModal = ({
                   ))}
                 </NeuView>
               </View>
+            </Row>
+
+            <Row last>
+              <RowLabel label="Show All tab" hint="A pill that shows every note across all your tabs at once" />
+              <NeuToggle
+                value={settings.showAllTab}
+                onValueChange={(v) => onUpdateSettings({ showAllTab: v })}
+                isDark={isDark}
+              />
             </Row>
           </SectionCard>
 
