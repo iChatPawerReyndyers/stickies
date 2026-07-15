@@ -4,8 +4,8 @@
 // asking the user to name it before it's saved.
 
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TextInput, StyleSheet } from 'react-native';
-import { NeuView, NeuPressable } from './Neumorphic';
+import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { NeuView } from '../components/Neumorphic';
 import { getNeuPalette, NEU_ACCENT, NEU_DANGER, NEU_RADIUS } from '../theme/neumorphic';
 
 type StickieStyleNameModalProps = {
@@ -46,7 +46,7 @@ const StickieStyleNameModal: React.FC<StickieStyleNameModalProps> = ({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
       <View style={s.backdrop}>
-        <NeuView isDark={isDark} radius={NEU_RADIUS.xl} style={s.card}>
+        <NeuView isDark={isDark} radius={NEU_RADIUS.xl} noShadow style={s.card}>
           <Text style={[s.title, { color: p.textPrimary }]}>Name this style</Text>
           <NeuView
             isDark={isDark}
@@ -68,12 +68,20 @@ const StickieStyleNameModal: React.FC<StickieStyleNameModalProps> = ({
           {!!error && <Text style={s.error}>{error}</Text>}
 
           <View style={s.btnRow}>
-            <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} style={s.btn} onPress={onCancel}>
+            <TouchableOpacity
+              style={[s.btn, s.btnInset, { backgroundColor: p.insetBase }]}
+              onPress={onCancel}
+              activeOpacity={0.8}
+            >
               <Text style={s.cancelText}>Cancel</Text>
-            </NeuPressable>
-            <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} backgroundColor={NEU_ACCENT} style={s.btn} onPress={handleSave}>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.btn, s.btnRaised, { backgroundColor: NEU_ACCENT, shadowColor: p.darkShadow }]}
+              onPress={handleSave}
+              activeOpacity={0.8}
+            >
               <Text style={s.saveText}>Save</Text>
-            </NeuPressable>
+            </TouchableOpacity>
           </View>
         </NeuView>
       </View>
@@ -90,7 +98,25 @@ const s = StyleSheet.create({
   input: { height: 44, paddingHorizontal: 12, fontSize: 15 },
   error: { color: NEU_DANGER, fontSize: 12, marginTop: 6, textAlign: 'center' },
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  btn: { flex: 1, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  btn: { flex: 1, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', borderRadius: NEU_RADIUS.sm },
+  // Manual approximations of NeuView's raised/inset shadow pair — used here
+  // instead of NeuPressable because NeuPressable only forwards `style` to
+  // its inner NeuView, never the outer Pressable, so a flex:1 button never
+  // actually participates in this row's flex layout. Same fix as
+  // TabModal.tsx's and NoteModal.tsx's footer buttons.
+  btnRaised: {
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  btnInset: {
+    borderWidth: 1.5,
+    borderTopColor: 'rgba(0,0,0,0.15)',
+    borderLeftColor: 'rgba(0,0,0,0.15)',
+    borderBottomColor: 'rgba(255,255,255,0.7)',
+    borderRightColor: 'rgba(255,255,255,0.7)',
+  },
   cancelText: { fontSize: 15, fontWeight: '700', color: NEU_DANGER },
   saveText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });

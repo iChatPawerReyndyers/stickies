@@ -14,9 +14,9 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChecklistItem, ContentType, TextStyle, ChecklistSort, ChecklistTextMode, NoteMargins, ItemSpacing } from '../types';
 import { StickieStyle, makeDefaultStickieStyle } from '../types/stickieStyle';
 import { loadStickieStyles, upsertStickieStyle } from '../utils/stickieStyleStorage';
-import StickieStylePreviewCard from './StickieStylePreviewCard';
+import StickieStylePreviewCard from '../cards/StickieStylePreviewCard';
 import StickieStyleDropdown from './StickieStyleDropdown';
-import StickieStyleNameModal from './StickieStyleNameModal';
+import StickieStyleNameModal from '../modals/StickieStyleNameModal';
 import NoteModal from '../modals/NoteModal';
 import { NeuPressable } from './Neumorphic';
 import { getNeuPalette, NEU_ACCENT, NEU_RADIUS } from '../theme/neumorphic';
@@ -222,6 +222,7 @@ const StickieStyleSection: React.FC<StickieStyleSectionProps> = ({ isDark = fals
       <NoteModal
         visible={editorVisible}
         tabName={editorMode === 'edit' && selectedStyle ? selectedStyle.name : 'New Style'}
+        isDark={isDark}
         contentType={draftContentType}
         onContentTypeChange={setDraftContentType}
         content={draftContent}

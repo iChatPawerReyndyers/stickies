@@ -41,21 +41,50 @@ const lightenForAndroidCard = (hex: string, amount = 0.35): string => {
 // banding a small number of hard-edged layers produces.
 type BlurLayer = { shift: number; grow: number; opacity: number };
 
-const buildDarkBlurLayers = (distance: number): BlurLayer[] => {
+// Light theme keeps its original, tighter blur (unchanged look/feel).
+const LIGHT_MODE_MULTIPLIERS = [0.3, 0.7, 1.2, 1.8, 2.6, 3.6];
+const LIGHT_MODE_OPACITIES = [0.32, 0.24, 0.18, 0.12, 0.07, 0.04];
+
+// Dark mode gets a wider, softer spread — approximating iOS's real
+// shadowRadius: distance * 1.3 blur, which reaches further out and fades
+// more gradually than the tighter light-mode layer stack. Paired with
+// leaving the card's own fill color unchanged (see androidRaisedBg below),
+// this is what gives a dark-mode card its separation from the page: a
+// directional glow, darker/heavier toward the bottom-right, not a
+// lighter-toned block.
+const DARK_MODE_GLOW_MULTIPLIERS = [0.5, 1.1, 1.9, 2.9, 4.1, 5.6];
+// Bumped up from the first pass — the dark (bottom-right) shadow needs to
+// read as clearly dark on its own, since the light layer below is now
+// deliberately kept faint rather than matching it.
+const DARK_MODE_GLOW_OPACITIES = [0.34, 0.27, 0.21, 0.15, 0.10, 0.06];
+
+const buildDarkBlurLayers = (distance: number, isDark: boolean): BlurLayer[] => {
   const shift = distance * .3;
-  return [0.3, 0.7, 1.2, 1.8, 2.6, 3.6].map((m, i) => ({
+  const multipliers = isDark ? DARK_MODE_GLOW_MULTIPLIERS : LIGHT_MODE_MULTIPLIERS;
+  const opacities = isDark ? DARK_MODE_GLOW_OPACITIES : LIGHT_MODE_OPACITIES;
+  return multipliers.map((m, i) => ({
     shift,
     grow: distance * m,
-    opacity: [0.32, 0.24, 0.18, 0.12, 0.07, 0.04][i],
+    opacity: opacities[i],
   }));
 };
 
-const buildLightBlurLayers = (distance: number): BlurLayer[] => {
+const buildLightBlurLayers = (distance: number, isDark: boolean): BlurLayer[] => {
   const shift = distance * 0.3;
-  return [0.3, 0.7, 1.2, 1.8, 2.6, 3.6].map((m, i) => ({
+  const multipliers = isDark ? DARK_MODE_GLOW_MULTIPLIERS : LIGHT_MODE_MULTIPLIERS;
+  // Deliberately faint in dark mode — previously this matched (and briefly
+  // even exceeded) the dark layer's opacity, which made the top-left
+  // "highlight" and bottom-right "shadow" blend into one even halo all the
+  // way around the card instead of a directional drop-shadow. Cut to about
+  // a third of the dark layer's strength so the bottom/right side reads as
+  // the dominant, clearly-dark edge, with just a faint lift on top/left.
+  const opacities = isDark
+    ? DARK_MODE_GLOW_OPACITIES.map(o => Math.round(o * 0.35 * 100) / 100)
+    : LIGHT_MODE_OPACITIES;
+  return multipliers.map((m, i) => ({
     shift,
     grow: distance * m,
-    opacity: [0.32, 0.24, 0.18, 0.12, 0.07, 0.04][i],
+    opacity: opacities[i],
   }));
 };
 
@@ -95,7 +124,16 @@ export const NeuView: React.FC<NeuViewProps> = ({
   // Only tint the *default* base tone — an explicit backgroundColor (a
   // colored note swatch, an accent button, etc.) already stands out against
   // the page by hue, so leave it alone.
-  const androidRaisedBg = IS_ANDROID && !backgroundColor && !inset ? lightenForAndroidCard(bg) : bg;
+  // 35% was tuned against the light theme's pale base — still used as-is
+  // there. Dark mode no longer lightens the fill at all: matched against
+  // the iOS build, a dark card should sit close to the page's own tone and
+  // rely on the wider glow (see buildDarkBlurLayers/buildLightBlurLayers
+  // above) to read as raised — lightening the fill on top of that glow
+  // just made cards look like flat gray blocks instead of soft-lifted
+  // dark surfaces.
+  const androidRaisedBg = IS_ANDROID && !backgroundColor && !inset && !isDark
+    ? lightenForAndroidCard(bg, 0.35)
+    : bg;
 
   if (inset) {
     // Carved-in look approximated with a two-tone inner border (dark
@@ -133,7 +171,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
     <View style={{ position: 'relative' }}>
       {!noShadow && (IS_ANDROID ? (
         <>
-          {buildDarkBlurLayers(distance).map((l, i) => (
+          {buildDarkBlurLayers(distance, isDark).map((l, i) => (
             <View
               key={`dark-${i}`}
               pointerEvents="none"
@@ -149,7 +187,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
               }}
             />
           ))}
-          {buildLightBlurLayers(distance).map((l, i) => (
+          {buildLightBlurLayers(distance, isDark).map((l, i) => (
             <View
               key={`light-${i}`}
               pointerEvents="none"

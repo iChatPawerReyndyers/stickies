@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
 import { ChecklistItem, TextStyle } from '../types';
 import styles from '../styles';
+import { resolveFontStyle } from '../utils/fontResolver';
 
 type ChecklistItemEditorProps = {
   item: ChecklistItem;
@@ -15,15 +16,7 @@ type ChecklistItemEditorProps = {
 
 const ChecklistItemEditor = ({ item, onToggle, onTextChange, onAddItem, fontFamily, textStyle, textColor }: ChecklistItemEditorProps) => {
   const getInputStyle = (): any => {
-    const baseStyle: any = { fontFamily, color: textColor };
-    if (textStyle === 'bold') {
-      baseStyle.fontWeight = 'bold';
-    } else if (textStyle === 'italic') {
-      baseStyle.fontStyle = 'italic';
-    } else if (textStyle === 'underline') {
-      baseStyle.textDecorationLine = 'underline';
-    }
-    return baseStyle;
+    return { ...resolveFontStyle(fontFamily, textStyle), color: textColor };
   };
 
   return (

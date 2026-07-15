@@ -6,6 +6,7 @@ import { FRAME_COMPONENTS } from '../frames';
 import { NeuPressable } from '../components/Neumorphic';
 import { NEU_RADIUS } from '../theme/neumorphic';
 import { resolveImageUrl } from '../utils/googleDriveImage';
+import { resolveFontStyle } from '../utils/fontResolver';
 
 type NoteCardProps = {
   note: Note;
@@ -30,15 +31,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
   const width = cardWidth ?? size;
   const height = cardHeight ?? size;
   const getTextStyle = (): any => {
-    const baseStyle: any = { fontFamily: note.fontFamily, color: note.textColor };
-    if (note.textStyle === 'bold') {
-      baseStyle.fontWeight = 'bold';
-    } else if (note.textStyle === 'italic') {
-      baseStyle.fontStyle = 'italic';
-    } else if (note.textStyle === 'underline') {
-      baseStyle.textDecorationLine = 'underline';
-    }
-    return baseStyle;
+    return { ...resolveFontStyle(note.fontFamily, note.textStyle), color: note.textColor };
   };
 
   const m = note.margins || { top: 0, bottom: 0, left: 0, right: 0 };

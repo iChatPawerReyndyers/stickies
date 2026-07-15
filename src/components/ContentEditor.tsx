@@ -3,6 +3,7 @@ import { View, Text, TextInput } from 'react-native';
 import { ChecklistItem, ContentType, TextStyle } from '../types';
 import ChecklistItemEditor from './ChecklistItemEditor';
 import styles from '../styles';
+import { resolveFontStyle } from '../utils/fontResolver';
 
 type ContentEditorProps = {
   type: ContentType;
@@ -15,15 +16,7 @@ type ContentEditorProps = {
 
 const ContentEditor = ({ type, content, onContentChange, fontFamily, textStyle, textColor }: ContentEditorProps) => {
   const getInputStyle = (): any => {
-    const baseStyle: any = { fontFamily, color: textColor };
-    if (textStyle === 'bold') {
-      baseStyle.fontWeight = 'bold';
-    } else if (textStyle === 'italic') {
-      baseStyle.fontStyle = 'italic';
-    } else if (textStyle === 'underline') {
-      baseStyle.textDecorationLine = 'underline';
-    }
-    return baseStyle;
+    return { ...resolveFontStyle(fontFamily, textStyle), color: textColor };
   };
 
   if (type === 'text') {

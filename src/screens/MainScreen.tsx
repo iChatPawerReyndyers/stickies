@@ -452,6 +452,17 @@ const MainScreen = () => {
     setViewOnlyNote(null);
   };
 
+  // Only reachable via the View Only checklist's tappable checkboxes (see
+  // NoteModal's viewOnly branch) — everything else about a View Only note is
+  // still read-only. Updates the note in place and lets the existing
+  // notes-effect below persist it to AsyncStorage, so a check/uncheck saves
+  // immediately with no separate Save step.
+  const handleViewOnlyContentChange = (content: ChecklistItem[] | string) => {
+    if (!viewOnlyNote) return;
+    setViewOnlyNote(prev => (prev ? { ...prev, content } : prev));
+    setNotes(prev => prev.map(n => (n.id === viewOnlyNote.id ? { ...n, content } : n)));
+  };
+
   const createNewTab = () => {
     setEditingTab(null);
     setShowTabModal(true);
@@ -1011,6 +1022,7 @@ const MainScreen = () => {
       <ReadOnlyModal
         visible={showReadOnlyModal}
         note={readOnlyNote}
+        isDark={settings.theme === 'dark'}
         onClose={() => { setShowReadOnlyModal(false); setReadOnlyNote(null); }}
         onSwipeDelete={readOnlyNote ? () => {
           const note = readOnlyNote;
@@ -1029,6 +1041,7 @@ const MainScreen = () => {
       <NoteModal
         visible={showModal}
         tabName={noteModalTabName}
+        isDark={settings.theme === 'dark'}
         contentType={newNoteContentType}
         onContentTypeChange={setNewNoteContentType}
         content={newNoteContent}
@@ -1091,10 +1104,11 @@ const MainScreen = () => {
       <NoteModal
         visible={showViewOnlyModal}
         tabName={viewOnlyTabName}
+        isDark={settings.theme === 'dark'}
         contentType={viewOnlyNote?.contentType || 'text'}
         onContentTypeChange={() => {}}
         content={viewOnlyNote?.content ?? ''}
-        onContentChange={() => {}}
+        onContentChange={handleViewOnlyContentChange}
         selectedColor={viewOnlyNote?.color || COLORS[0]}
         onColorChange={() => {}}
         selectedTextColor={viewOnlyNote?.textColor || TEXT_COLORS[0]}

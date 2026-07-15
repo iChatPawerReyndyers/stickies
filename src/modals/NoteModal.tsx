@@ -23,6 +23,7 @@ import { resolveImageUrl } from '../utils/googleDriveImage';
 import { NeuView, NeuPressable } from '../components/Neumorphic';
 import NeuColorPickerModal from '../components/NeuColorPickerModal';
 import CheckboxIcon from '../components/CheckboxIcon';
+import { resolveFontStyle } from '../utils/fontResolver';
 import { NEU_RADIUS, NEU_ACCENT, NEU_DANGER, getNeuPalette } from '../theme/neumorphic';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -100,6 +101,12 @@ const BrushStroke: React.FC<{ index: number }> = ({ index }) => {
 type NoteModalProps = {
   visible: boolean;
   tabName: string;
+  // Follows the app's Theme setting for all chrome outside the note's own
+  // colored card — the styling bar, footer, discard dialog, etc. The note
+  // card itself keeps rendering in the note's own chosen color regardless
+  // of this, same as NoteCard/StickieStylePreviewCard already do — only
+  // the surrounding app UI was previously stuck always-light.
+  isDark?: boolean;
   contentType: ContentType;
   onContentTypeChange: (type: ContentType) => void;
   content: string | ChecklistItem[];
@@ -201,6 +208,7 @@ interface StylingSnapshot {
 
 const NoteModal = ({
   visible, tabName,
+  isDark = false,
   contentType, onContentTypeChange,
   content, onContentChange,
   selectedColor, onColorChange,
@@ -277,7 +285,7 @@ const NoteModal = ({
   // a second consecutive Backspace on a still-empty item deletes it.
   const backspacePendingRef = useRef<{ [id: string]: boolean }>({});
 
-  const p = getNeuPalette(false);
+  const p = getNeuPalette(isDark);
 
   // Read-only note content is presented the same way as previewMode's
   // (non-editable) rendering — this just extends that same rendering path.
@@ -466,16 +474,12 @@ const NoteModal = ({
   // ── Text style ───────────────────────────────────────────────────────────────
 
   const getTextStyle = (): any => {
-    const base: any = {
-      fontFamily: selectedFont,
+    return {
+      ...resolveFontStyle(selectedFont, selectedTextStyle),
       color: selectedTextColor,
       fontSize: selectedFontSize,
       lineHeight: selectedFontSize + selectedLineSpacing,
     };
-    if (selectedTextStyle === 'bold') base.fontWeight = 'bold';
-    else if (selectedTextStyle === 'italic') base.fontStyle = 'italic';
-    else if (selectedTextStyle === 'underline') base.textDecorationLine = 'underline';
-    return base;
   };
 
   // Called when ✕ is tapped — shows custom confirm or discards immediately
@@ -566,11 +570,10 @@ const NoteModal = ({
           style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: showStyling ? STYLING_BAR_HEIGHT : 0 }}
           pointerEvents="box-none"
         >
-          <NeuView
+          <NeuView isDark={isDark}
             radius={28}
             backgroundColor={(FrameComponent || resolvedBgImageUrl) ? 'transparent' : selectedColor}
             style={[s.card, { height: MODAL_HEIGHT }]}
-            onStartShouldSetResponder={() => true}
             noShadow
           >
             {/* SVG frame background */}
@@ -646,9 +649,20 @@ const NoteModal = ({
                       }
                       return (
                         <View key={item.id} style={[clStyles.row, { marginTop: selectedItemSpacing.top, marginBottom: selectedItemSpacing.bottom }]}>
-                          <View style={clStyles.checkboxTouch}>
-                            <CheckboxIcon checked={item.completed} />
-                          </View>
+                          {viewOnly ? (
+                            <TouchableOpacity
+                              style={clStyles.checkboxTouch}
+                              onPress={() => toggleItem(item.id)}
+                              activeOpacity={0.7}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <CheckboxIcon checked={item.completed} />
+                            </TouchableOpacity>
+                          ) : (
+                            <View style={clStyles.checkboxTouch}>
+                              <CheckboxIcon checked={item.completed} />
+                            </View>
+                          )}
                           <View style={clStyles.inputWrap}>
                             {selectedChecklistTextMode === 'single' && <BrushStroke index={index} />}
                             <Text style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}>{item.text}</Text>
@@ -803,11 +817,11 @@ const NoteModal = ({
               </View>
 
             {/* Footer — hidden entirely in viewOnly mode; closing happens only via the ✕.
-                Locked from touches while the styling bar is open (same reasoning as the
-                content area above) so Cancel/Confirm can't be tapped through the dim
-                overlay — closing now only happens via Cancel/Done in the sheet itself. */}
+                Locked from touches (and visually dimmed) while the styling bar is open,
+                so Cancel/Confirm read as inactive without washing out the note content
+                underneath. */}
             {!viewOnly && (
-              <View pointerEvents={showStyling ? 'none' : 'auto'}>
+              <View pointerEvents={showStyling ? 'none' : 'auto'} style={showStyling ? { opacity: 0.4 } : undefined}>
                 <View style={s.dividerLine} />
                 {styleEditorMode ? (
                   <View style={s.actionRow}>
@@ -844,7 +858,6 @@ const NoteModal = ({
               </View>
             )}
 
-            {showStyling && <View pointerEvents="none" style={s.contentDimOverlay} />}
           </NeuView>
         </View>
 
@@ -852,22 +865,26 @@ const NoteModal = ({
         {showStyling && (
           <>
             <View style={barStyles.bottomSheet}>
-              <NeuView radius={20} style={{ height: STYLING_BAR_HEIGHT, width: '100%' }}>
+              <NeuView isDark={isDark} radius={20} style={{ height: STYLING_BAR_HEIGHT, width: '100%' }}>
               <View style={barStyles.barHeader}>
                 {!styleEditorMode ? (
                   <TouchableOpacity onPress={handleXPress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Text style={barStyles.barHeaderClose} numberOfLines={1}>Cancel</Text>
                   </TouchableOpacity>
                 ) : (
-                  <View style={{ width: 50 }} />
+                  <TouchableOpacity onPress={onCancel} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={barStyles.barHeaderClose} numberOfLines={1}>Cancel</Text>
+                  </TouchableOpacity>
                 )}
-                <Text style={barStyles.barHeaderTitle}>Styling</Text>
+                <Text style={[barStyles.barHeaderTitle, { color: p.textSecondary }]}>Styling</Text>
                 {!styleEditorMode ? (
                   <TouchableOpacity onPress={saveStyling} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Text style={barStyles.barHeaderDone} numberOfLines={1}>Done</Text>
                   </TouchableOpacity>
                 ) : (
-                  <View style={{ width: 50 }} />
+                  <TouchableOpacity onPress={onConfirmStyle || onSave} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={barStyles.barHeaderDone} numberOfLines={1}>Save</Text>
+                  </TouchableOpacity>
                 )}
               </View>
               <View style={[barStyles.barHeaderDivider, { backgroundColor: `${p.darkShadow}55` }]} />
@@ -884,16 +901,16 @@ const NoteModal = ({
               >
               {/* ── Content Type ── */}
               <View style={[barStyles.section, { width: 116 }]}>
-                <Text style={barStyles.sLabel}>Type</Text>
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Type</Text>
                 {(['text', 'checklist'] as ContentType[]).map(type => (
-                  <NeuPressable
+                  <NeuPressable isDark={isDark}
                     key={type}
                     radius={9}
                     backgroundColor={contentType === type ? NEU_ACCENT : p.base}
                     style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
                     onPress={() => onContentTypeChange(type)}
                   >
-                    <Text style={[barStyles.miniBtnText, { fontSize: 9.5 }, contentType === type && barStyles.miniBtnTextActive]}>
+                    <Text style={[barStyles.miniBtnText, { fontSize: 9.5, color: p.textPrimary }, contentType === type && barStyles.miniBtnTextActive]}>
                       {type === 'text' ? 'Text' : 'Checklist'}
                     </Text>
                   </NeuPressable>
@@ -904,16 +921,16 @@ const NoteModal = ({
 
               {/* ── Background ── */}
               <View style={[barStyles.section, { width: 176 }]}>
-                <Text style={barStyles.sLabel}>Background</Text>
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Background</Text>
                 <TouchableOpacity
                   style={[barStyles.svgToggle, !!resolvedBgImageUrl && barStyles.disabled]}
                   onPress={() => onUseSvgBackgroundChange(!useSvgBackground)}
                   disabled={!!resolvedBgImageUrl}
                 >
-                  <NeuView inset={!useSvgBackground} radius={5} backgroundColor={useSvgBackground ? NEU_ACCENT : p.insetBase} style={barStyles.miniCheck}>
+                  <NeuView isDark={isDark} inset={!useSvgBackground} radius={5} backgroundColor={useSvgBackground ? NEU_ACCENT : p.insetBase} style={barStyles.miniCheck}>
                     {useSvgBackground && <Text style={barStyles.miniCheckMark}>✓</Text>}
                   </NeuView>
-                  <Text style={barStyles.svgToggleText}>SVG Frame</Text>
+                  <Text style={[barStyles.svgToggleText, { color: p.textPrimary }]}>SVG Frame</Text>
                 </TouchableOpacity>
                 <View
                   style={[barStyles.swatchGrid, (useSvgBackground || !!backgroundImageUrl) && barStyles.disabled]}
@@ -921,7 +938,7 @@ const NoteModal = ({
                 >
                   {COLORS.map(color => (
                     <TouchableOpacity key={color} onPress={() => onColorChange(color)}>
-                      <NeuView
+                      <NeuView isDark={isDark}
                         radius={7}
                         backgroundColor={color}
                         style={[
@@ -934,7 +951,7 @@ const NoteModal = ({
                     </TouchableOpacity>
                   ))}
                   <TouchableOpacity onPress={() => setColorPickerTarget('background')}>
-                    <NeuView
+                    <NeuView isDark={isDark}
                       radius={7}
                       backgroundColor={COLORS.includes(selectedColor) ? undefined : selectedColor}
                       style={{ width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' }}
@@ -947,10 +964,10 @@ const NoteModal = ({
                   style={[useSvgBackground && barStyles.disabled, { marginTop: 8 }]}
                   pointerEvents={useSvgBackground ? 'none' : 'auto'}
                 >
-                  <Text style={barStyles.imageUrlLabel}>Image URL</Text>
-                  <NeuView inset radius={7}>
+                  <Text style={[barStyles.imageUrlLabel, { color: p.textSecondary }]}>Image URL</Text>
+                  <NeuView isDark={isDark} inset radius={7}>
                     <TextInput
-                      style={barStyles.imageUrlInput}
+                      style={[barStyles.imageUrlInput, { color: p.textPrimary }]}
                       placeholder="Google Drive link or image URL"
                       placeholderTextColor="#9099AC"
                       value={backgroundImageUrl || ''}
@@ -966,11 +983,11 @@ const NoteModal = ({
 
               {/* ── Font Color ── */}
               <View style={[barStyles.section, { width: 165 }]}>
-                <Text style={barStyles.sLabel}>Font Color</Text>
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Font Color</Text>
                 <View style={barStyles.swatchGrid}>
                   {TEXT_COLORS.map(color => (
                     <TouchableOpacity key={color} onPress={() => onTextColorChange(color)}>
-                      <NeuView
+                      <NeuView isDark={isDark}
                         radius={7}
                         backgroundColor={color}
                         style={[
@@ -983,7 +1000,7 @@ const NoteModal = ({
                     </TouchableOpacity>
                   ))}
                   <TouchableOpacity onPress={() => setColorPickerTarget('font')}>
-                    <NeuView
+                    <NeuView isDark={isDark}
                       radius={7}
                       backgroundColor={TEXT_COLORS.includes(selectedTextColor) ? undefined : selectedTextColor}
                       style={{ width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' }}
@@ -998,19 +1015,19 @@ const NoteModal = ({
 
               {/* ── Font ── */}
               <View style={[barStyles.section, { width: 174 }]}>
-                <Text style={barStyles.sLabel}>Font</Text>
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Font</Text>
                 <View>
                   {Array.from({ length: Math.ceil(FONTS.length / 2) }).map((_, rowIndex) => (
                     <View key={rowIndex} style={{ flexDirection: 'row', gap: MINI_GAP, marginBottom: MINI_GAP }}>
                       {FONTS.slice(rowIndex * 2, rowIndex * 2 + 2).map(font => (
-                        <NeuPressable
+                        <NeuPressable isDark={isDark}
                           key={font.value}
                           radius={7}
                           backgroundColor={selectedFont === font.value ? NEU_ACCENT : p.base}
                           style={[barStyles.fontChip]}
                           onPress={() => onFontChange(font.value)}
                         >
-                          <Text style={[barStyles.fontChipText, { fontFamily: font.value }, selectedFont === font.value && barStyles.miniBtnTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+                          <Text style={[barStyles.fontChipText, { fontFamily: font.value, color: p.textPrimary }, selectedFont === font.value && barStyles.miniBtnTextActive]} numberOfLines={1} adjustsFontSizeToFit>
                             {font.name}
                           </Text>
                         </NeuPressable>
@@ -1024,12 +1041,12 @@ const NoteModal = ({
 
               {/* ── Font Size ── */}
               <View style={[barStyles.section, { width: 112 }]}>
-                <Text style={barStyles.sLabel}>Size</Text>
-                <NeuView inset radius={9} style={barStyles.stepper}>
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Size</Text>
+                <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(6, selectedFontSize - 2))}>
                     <Text style={barStyles.stepBtnText}>−</Text>
                   </TouchableOpacity>
-                  <Text style={barStyles.stepVal}>{selectedFontSize}</Text>
+                  <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedFontSize}</Text>
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.min(36, selectedFontSize + 2))}>
                     <Text style={barStyles.stepBtnText}>+</Text>
                   </TouchableOpacity>
@@ -1040,10 +1057,10 @@ const NoteModal = ({
 
               {/* ── Text Style ── */}
               <View style={[barStyles.section, { width: 155 }]}>
-                <Text style={barStyles.sLabel}>Style</Text>
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Style</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP }}>
                   {(['normal', 'bold', 'italic', 'underline'] as TextStyle[]).map(style => (
-                    <NeuPressable
+                    <NeuPressable isDark={isDark}
                       key={style}
                       radius={7}
                       backgroundColor={selectedTextStyle === style ? NEU_ACCENT : p.base}
@@ -1055,6 +1072,7 @@ const NoteModal = ({
                         adjustsFontSizeToFit
                         style={[
                         barStyles.styleChipText,
+                        { color: p.textPrimary },
                         style === 'bold' && { fontWeight: 'bold' },
                         style === 'italic' && { fontStyle: 'italic' },
                         style === 'underline' && { textDecorationLine: 'underline' },
@@ -1071,18 +1089,18 @@ const NoteModal = ({
 
               {/* ── Margins ── */}
               <View style={[barStyles.section, { width: 194 }]}>
-                <Text style={barStyles.sLabel}>Margins</Text>
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Margins</Text>
                 {(['top', 'bottom', 'left', 'right'] as const).map(side => (
                   <View key={side} style={barStyles.marginRow}>
-                    <Text style={barStyles.marginLabel}>{side.charAt(0).toUpperCase() + side.slice(1)}</Text>
-                    <NeuView inset radius={9} style={barStyles.stepper}>
+                    <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>{side.charAt(0).toUpperCase() + side.slice(1)}</Text>
+                    <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
                         onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.max(0, selectedMargins[side] - 4) })}
                       >
                         <Text style={barStyles.stepBtnText}>−</Text>
                       </TouchableOpacity>
-                      <Text style={barStyles.stepVal}>{selectedMargins[side]}</Text>
+                      <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedMargins[side]}</Text>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
                         onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.min(100, selectedMargins[side] + 4) })}
@@ -1098,22 +1116,22 @@ const NoteModal = ({
 
               {/* ── Spacing (both types — checklist gets item gaps, text gets line spacing) ── */}
               <View style={[barStyles.section, { width: contentType === 'checklist' ? 154 : 122 }]}>
-                <Text style={barStyles.sLabel}>{contentType === 'checklist' ? 'Item Spacing' : 'Line Spacing'}</Text>
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>{contentType === 'checklist' ? 'Item Spacing' : 'Line Spacing'}</Text>
                 {contentType === 'checklist' ? (
                   ([
                     { key: 'top', label: 'Above' },
                     { key: 'bottom', label: 'Below' },
                   ] as { key: keyof ItemSpacing; label: string }[]).map(({ key, label }) => (
                     <View key={key} style={barStyles.marginRow}>
-                      <Text style={barStyles.marginLabel}>{label}</Text>
-                      <NeuView inset radius={9} style={barStyles.stepper}>
+                      <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>{label}</Text>
+                      <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.max(0, selectedItemSpacing[key] - 2) })}
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
-                        <Text style={barStyles.stepVal}>{selectedItemSpacing[key]}</Text>
+                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedItemSpacing[key]}</Text>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.min(48, selectedItemSpacing[key] + 2) })}
@@ -1124,14 +1142,14 @@ const NoteModal = ({
                     </View>
                   ))
                 ) : (
-                  <NeuView inset radius={9} style={barStyles.stepper}>
+                  <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                     <TouchableOpacity
                       style={barStyles.stepBtn}
                       onPress={() => onLineSpacingChange(Math.max(0, selectedLineSpacing - 2))}
                     >
                       <Text style={barStyles.stepBtnText}>−</Text>
                     </TouchableOpacity>
-                    <Text style={barStyles.stepVal}>{selectedLineSpacing}</Text>
+                    <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedLineSpacing}</Text>
                     <TouchableOpacity
                       style={barStyles.stepBtn}
                       onPress={() => onLineSpacingChange(Math.min(30, selectedLineSpacing + 2))}
@@ -1147,19 +1165,19 @@ const NoteModal = ({
                 <>
                   <View style={barStyles.vDivider} />
                   <View style={[barStyles.section, { width: 116 }]}>
-                    <Text style={barStyles.sLabel}>Display</Text>
+                    <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Display</Text>
                     {([
                       { value: 'single', label: 'Line' },
                       { value: 'wrap', label: 'Wrap' },
                     ] as { value: ChecklistTextMode; label: string }[]).map(opt => (
-                      <NeuPressable
+                      <NeuPressable isDark={isDark}
                         key={opt.value}
                         radius={9}
                         backgroundColor={selectedChecklistTextMode === opt.value ? NEU_ACCENT : p.base}
                         style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
                         onPress={() => onChecklistTextModeChange(opt.value)}
                       >
-                        <Text style={[barStyles.miniBtnText, { textAlign: 'center' }, selectedChecklistTextMode === opt.value && barStyles.miniBtnTextActive]}>
+                        <Text style={[barStyles.miniBtnText, { textAlign: 'center', color: p.textPrimary }, selectedChecklistTextMode === opt.value && barStyles.miniBtnTextActive]}>
                           {opt.label}
                         </Text>
                       </NeuPressable>
@@ -1167,20 +1185,20 @@ const NoteModal = ({
                   </View>
                   <View style={barStyles.vDivider} />
                   <View style={[barStyles.section, { width: 131 }]}>
-                    <Text style={barStyles.sLabel}>Order</Text>
+                    <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Order</Text>
                     {([
                       { value: 'as-is', label: 'As Is' },
                       { value: 'unchecked-first', label: 'Pending First' },
                       { value: 'alphabetical', label: 'A → Z' },
                     ] as { value: ChecklistSort; label: string }[]).map(opt => (
-                      <NeuPressable
+                      <NeuPressable isDark={isDark}
                         key={opt.value}
                         radius={9}
                         backgroundColor={selectedChecklistSort === opt.value ? NEU_ACCENT : p.base}
                         style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
                         onPress={() => onChecklistSortChange(opt.value)}
                       >
-                        <Text style={[barStyles.miniBtnText, { textAlign: 'center' }, selectedChecklistSort === opt.value && barStyles.miniBtnTextActive]}>
+                        <Text style={[barStyles.miniBtnText, { textAlign: 'center', color: p.textPrimary }, selectedChecklistSort === opt.value && barStyles.miniBtnTextActive]}>
                           {opt.label}
                         </Text>
                       </NeuPressable>
@@ -1197,17 +1215,17 @@ const NoteModal = ({
                 <>
                   <View style={barStyles.vDivider} />
                   <View style={[barStyles.section, { width: 150 }]}>
-                    <Text style={barStyles.sLabel}>Grid Size</Text>
+                    <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Grid Size</Text>
                     <View style={barStyles.marginRow}>
-                      <Text style={barStyles.marginLabel}>Columns</Text>
-                      <NeuView inset radius={9} style={barStyles.stepper}>
+                      <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>Columns</Text>
+                      <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onColSpanChange(Math.max(1, selectedColSpan - 1))}
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
-                        <Text style={barStyles.stepVal}>{selectedColSpan}</Text>
+                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedColSpan}</Text>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onColSpanChange(Math.min(maxColSpan, selectedColSpan + 1))}
@@ -1217,15 +1235,15 @@ const NoteModal = ({
                       </NeuView>
                     </View>
                     <View style={barStyles.marginRow}>
-                      <Text style={barStyles.marginLabel}>Rows</Text>
-                      <NeuView inset radius={9} style={barStyles.stepper}>
+                      <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>Rows</Text>
+                      <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onRowSpanChange(Math.max(1, selectedRowSpan - 1))}
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
-                        <Text style={barStyles.stepVal}>{selectedRowSpan}</Text>
+                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedRowSpan}</Text>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onRowSpanChange(Math.min(MAX_NOTE_ROW_SPAN, selectedRowSpan + 1))}
@@ -1234,7 +1252,7 @@ const NoteModal = ({
                         </TouchableOpacity>
                       </NeuView>
                     </View>
-                    <Text style={barStyles.gridSizeHint}>Only affects Grid view</Text>
+                    <Text style={[barStyles.gridSizeHint, { color: p.textSecondary }]}>Only affects Grid view</Text>
                   </View>
                 </>
               )}
@@ -1261,9 +1279,9 @@ const NoteModal = ({
         {/* Discard confirmation overlay — inline so it works inside the existing Modal on iOS */}
         {showDiscardConfirm && (
           <View style={[StyleSheet.absoluteFill, confirmStyles.backdrop]}>
-            <View style={confirmStyles.card}>
-              <Text style={confirmStyles.title}>Discard Changes?</Text>
-              <Text style={confirmStyles.message}>
+            <View style={[confirmStyles.card, { backgroundColor: p.base }]}>
+              <Text style={[confirmStyles.title, { color: p.textPrimary }]}>Discard Changes?</Text>
+              <Text style={[confirmStyles.message, { color: p.textSecondary }]}>
                 All styling changes made since opening the panel will be reverted.
               </Text>
 
@@ -1273,15 +1291,15 @@ const NoteModal = ({
                 onPress={() => setDontShowAgain(v => !v)}
                 activeOpacity={0.7}
               >
-                <View style={[confirmStyles.checkbox, dontShowAgain && confirmStyles.checkboxChecked]}>
+                <View style={[confirmStyles.checkbox, { borderColor: p.darkShadow, backgroundColor: p.insetBase }, dontShowAgain && confirmStyles.checkboxChecked]}>
                   {dontShowAgain && <Text style={confirmStyles.checkMark}>✓</Text>}
                 </View>
-                <Text style={confirmStyles.checkLabel}>Don't show this again</Text>
+                <Text style={[confirmStyles.checkLabel, { color: p.textPrimary }]}>Don't show this again</Text>
               </TouchableOpacity>
 
               <View style={confirmStyles.btnRow}>
                 <TouchableOpacity
-                  style={[confirmStyles.btn, confirmStyles.btnKeep]}
+                  style={[confirmStyles.btn, confirmStyles.btnKeep, { backgroundColor: p.insetBase }]}
                   onPress={() => setShowDiscardConfirm(false)}
                   activeOpacity={0.8}
                 >
@@ -1303,6 +1321,7 @@ const NoteModal = ({
           visible={colorPickerTarget !== null}
           initialColor={colorPickerTarget === 'background' ? selectedColor : selectedTextColor}
           title={colorPickerTarget === 'background' ? 'Background color' : 'Font color'}
+          isDark={isDark}
           onCancel={() => setColorPickerTarget(null)}
           onSave={(hex) => {
             if (colorPickerTarget === 'background') onColorChange(hex);
@@ -1349,11 +1368,6 @@ const s = StyleSheet.create({
   },
   closeIconX: {
     fontSize: 18, fontWeight: '700', color: '#1C1C1E',
-  },
-  contentDimOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.55)',
   },
   dividerLine: { height: 1, backgroundColor: '#E5E5EA' },
   textInput: { flex: 1, padding: 0 },

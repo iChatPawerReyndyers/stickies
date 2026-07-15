@@ -3,6 +3,8 @@ import { Modal, View, Text, TouchableOpacity, ScrollView, LayoutChangeEvent } fr
 import { Note, DEFAULT_LINE_SPACING } from '../types';
 import styles from '../styles';
 import SwipeToAction from '../components/SwipeToAction';
+import { resolveFontStyle } from '../utils/fontResolver';
+import { getNeuPalette } from '../theme/neumorphic';
 
 // Fixed bottom padding baked into styles.modalContent — subtracted below so
 // the computed scroll-area height matches the actual space left over after
@@ -17,9 +19,15 @@ type ReadOnlyModalProps = {
   // permanently delete now, right = restore to the tab it was trashed from.
   onSwipeDelete?: () => void;
   onSwipeRestore?: () => void;
+  // Follows the app's Theme setting for the card chrome (background,
+  // header, title). The note's own text stays note.textColor either way —
+  // that's the note's own styling choice, not app theme.
+  isDark?: boolean;
 };
 
-const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore }: ReadOnlyModalProps) => {
+const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore, isDark = false }: ReadOnlyModalProps) => {
+  const p = getNeuPalette(isDark);
+
   // Measured pixel heights of the modal card and its header row. The scroll
   // area previously relied on a flex:1 chain running through SwipeToAction's
   // Animated.View (which also carries a transform for the swipe gesture) —
@@ -39,16 +47,12 @@ const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore }
   const getTextStyle = (): any => {
     const fontSize = note.fontSize || 16;
     const lineSpacing = note.lineSpacing ?? DEFAULT_LINE_SPACING;
-    const base: any = {
-      fontFamily: note.fontFamily,
+    return {
+      ...resolveFontStyle(note.fontFamily, note.textStyle),
       color: note.textColor,
       fontSize,
       lineHeight: fontSize + lineSpacing,
     };
-    if (note.textStyle === 'bold') base.fontWeight = 'bold';
-    else if (note.textStyle === 'italic') base.fontStyle = 'italic';
-    else if (note.textStyle === 'underline') base.textDecorationLine = 'underline';
-    return base;
   };
 
   const renderContent = () => {
@@ -87,12 +91,12 @@ const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore }
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent} onLayout={onContainerLayout}>
-          <View style={styles.modalHeader} onLayout={onHeaderLayout}>
+        <View style={[styles.modalContent, { backgroundColor: p.base, shadowColor: p.darkShadow }]} onLayout={onContainerLayout}>
+          <View style={[styles.modalHeader, { borderBottomColor: `${p.darkShadow}30` }]} onLayout={onHeaderLayout}>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.modalCloseButton}>← Close</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>View Note</Text>
+            <Text style={[styles.modalTitle, { color: p.textPrimary }]}>View Note</Text>
             <View style={{ width: 60 }} />
           </View>
           <SwipeToAction

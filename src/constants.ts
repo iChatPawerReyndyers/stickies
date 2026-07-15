@@ -5,6 +5,15 @@ import { NEU_NOTE_COLORS, NEU_ACCENT } from './theme/neumorphic';
 // soft dual-shadow still reads even though the fill itself is colorful.
 export const COLORS = NEU_NOTE_COLORS;
 export const TEXT_COLORS = ['#3A3F4B', '#000000', '#FFFFFF', '#4A4A4A', '#D32F2F', '#1976D2', '#2E7D32', '#7B1FA2', '#F5A623', '#00796B'];
+
+// Each entry's `value` is always the Regular file — the one actually
+// stored on a Note/StickieStyle as fontFamily. `bold`/`italic` are the
+// dedicated bold/italic .ttf files bundled under /assets/fonts, used only
+// on Android (see utils/fontResolver.ts) since Android can't synthesize
+// bold/italic on a custom font the way it can on a real system font.
+// Omitted where no such file is bundled (e.g. Cursive has no italic .ttf
+// today — italic on that font silently falls back to Regular on Android
+// until one is added).
 export const FONTS = Platform.OS === 'ios'
   ? [
       { name: 'System', value: 'System' },
@@ -26,10 +35,10 @@ export const FONTS = Platform.OS === 'ios'
       // The value must exactly match each font file's name minus its
       // .ttf extension.
       { name: 'System', value: 'sans-serif' },
-      { name: 'Cursive', value: 'DancingScript-Regular' },
-      { name: 'Palatino', value: 'Cardo-Regular' },
-      { name: 'Courier', value: 'Cousine-Regular' },
-      { name: 'Times New Roman', value: 'Tinos-Regular' },
+      { name: 'Cursive', value: 'DancingScript-Regular', bold: 'DancingScript-Bold' },
+      { name: 'Palatino', value: 'Cardo-Regular', bold: 'Cardo-Bold', italic: 'Cardo-Italic' },
+      { name: 'Courier', value: 'Cousine-Regular', bold: 'Cousine-Bold', italic: 'Cousine-Italic' },
+      { name: 'Times New Roman', value: 'Tinos-Regular', bold: 'Tinos-Bold', italic: 'Tinos-Italic' },
     ];
 
 // Cycled through automatically whenever a new (non-built-in) tab is created,

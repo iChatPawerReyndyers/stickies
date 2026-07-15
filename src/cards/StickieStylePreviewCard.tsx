@@ -11,7 +11,8 @@ import { ChecklistItem, ContentType } from '../types';
 import { StickieStyle } from '../types/stickieStyle';
 import { FRAME_COMPONENTS } from '../frames';
 import { resolveImageUrl } from '../utils/googleDriveImage';
-import CheckboxIcon from './CheckboxIcon';
+import { resolveFontStyle } from '../utils/fontResolver';
+import CheckboxIcon from '../components/CheckboxIcon';
 
 type StickieStylePreviewCardProps = {
   style: StickieStyle;
@@ -32,16 +33,12 @@ const StickieStylePreviewCard: React.FC<StickieStylePreviewCardProps> = ({
   height = DEFAULT_HEIGHT,
 }) => {
   const getTextStyle = (): any => {
-    const base: any = {
-      fontFamily: style.font,
+    return {
+      ...resolveFontStyle(style.font, style.textStyle),
       color: style.textColor,
       fontSize: style.fontSize,
       lineHeight: style.fontSize + style.lineSpacing,
     };
-    if (style.textStyle === 'bold') base.fontWeight = 'bold';
-    else if (style.textStyle === 'italic') base.fontStyle = 'italic';
-    else if (style.textStyle === 'underline') base.textDecorationLine = 'underline';
-    return base;
   };
 
   const FrameComponent = style.useSvgBackground && style.svgFrameId

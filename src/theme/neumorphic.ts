@@ -5,13 +5,24 @@
 // everywhere.
 
 export const NEU_BASE = '#E6EBF2';        // shared base surface color (bg, cards, buttons)
-export const NEU_BASE_DARK = '#2B2E36';   // dark-mode base surface color
+// Deepened from #2B2E36 — matched against the iOS reference build, whose
+// dark-mode page sits noticeably darker than any raised card on it. The
+// old value was close enough to NEU_INSET_BASE_DARK/card tones that raised
+// surfaces had very little room to visually lift off the page, especially
+// on Android where there's no real colored shadow to help separate them.
+export const NEU_BASE_DARK = '#14151a';   // dark-mode base surface color
 
 export const NEU_LIGHT_SHADOW = '#FFFFFF';
 export const NEU_DARK_SHADOW = '#A6B0C3';
 
-export const NEU_LIGHT_SHADOW_DARK_MODE = '#3A3E48';
-export const NEU_DARK_SHADOW_DARK_MODE = '#15171B';
+// Brightened from #454A56 — this is Android's "light" shadow layer (see
+// buildLightBlurLayers in Neumorphic.tsx) as well as iOS's shadowColor for
+// the light-side shadow View. The old tone was too close in luminance to
+// the card itself to register as a highlight, which is what made Android's
+// dual-shadow read as a single flat dark smudge instead of a soft lifted
+// edge (iOS's real shadowOpacity/shadowRadius masked the same issue).
+export const NEU_LIGHT_SHADOW_DARK_MODE = '#565B68';
+export const NEU_DARK_SHADOW_DARK_MODE = '#0E0F12';
 
 // Base color for carved-in/inset surfaces (text inputs, unselected radio
 // tracks, toggle-off tracks) — slightly darker than NEU_BASE so the inset
@@ -40,11 +51,6 @@ export const NEU_NOTE_COLORS = [
   '#FBC4CE', // pastel coral pink (was #FF6B81)
   '#B4EAD7', // pastel mint    (was #34D399)
   '#D6CCF9', // pastel violet  (was #A78BFA)
-  '#FDE7B3', // pastel yellow  (was #FFD166)
-  '#B2E8E0', // pastel turquoise
-  '#F7C6DE', // pastel rose
-  '#E3D1FB', // pastel lilac
-  '#EAD9C2', // pastel sand
 ];
 
 export const NEU_RADIUS = {
