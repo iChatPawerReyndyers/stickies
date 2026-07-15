@@ -486,6 +486,7 @@ const MainScreen = () => {
     textColor?: string,
     backgroundImageUrl?: string,
     screenBackgroundImageUrl?: string,
+    screenBackgroundColor?: string,
   ) => {
     if (!name.trim()) return;
 
@@ -507,7 +508,7 @@ const MainScreen = () => {
     if (id) {
       setTabs(prevTabs => {
         const updatedTab = prevTabs.map(t => (t.id === id
-          ? { ...t, name, color: color || t.color, textColor: textColor || t.textColor, backgroundImageUrl, screenBackgroundImageUrl }
+          ? { ...t, name, color: color || t.color, textColor: textColor || t.textColor, backgroundImageUrl, screenBackgroundImageUrl, screenBackgroundColor }
           : t));
         if (afterTabId && afterTabId !== id) {
           const tab = updatedTab.find(t => t.id === id);
@@ -524,6 +525,7 @@ const MainScreen = () => {
         textColor: textColor || '#FFFFFF',
         backgroundImageUrl,
         screenBackgroundImageUrl,
+        screenBackgroundColor,
       };
       setTabs(prevTabs => insertAfter(prevTabs, newTab, afterTabId));
       setActiveTabId(newTab.id);
@@ -878,7 +880,7 @@ const MainScreen = () => {
           )}
         </ScrollView>
 
-        <View style={styles.mainContentArea}>
+        <View style={[styles.mainContentArea, !!activeTab?.screenBackgroundColor && { backgroundColor: activeTab.screenBackgroundColor }]}>
           {!!resolvedScreenBgImage && (
             <>
               <Image

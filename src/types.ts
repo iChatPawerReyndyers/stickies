@@ -164,4 +164,8 @@ export interface Tab {
   // backgroundImageUrl above — a tab's pill and its screen backdrop can be
   // two different images, or either can be unset while the other is set.
   screenBackgroundImageUrl?: string;
+  // Solid color shown as the main screen's wallpaper, same slot as
+  // screenBackgroundImageUrl. Acts as the base layer — when an image is
+  // also set, the image draws on top of this color instead of replacing it.
+  screenBackgroundColor?: string;
 }

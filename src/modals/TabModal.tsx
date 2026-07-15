@@ -14,7 +14,8 @@ import {
 import { Tab } from '../types';
 import { getHexInputValue, normalizeHexColor } from '../utils/color';
 import { resolveImageUrl } from '../utils/googleDriveImage';
-import { NeuView } from '../components/Neumorphic';
+import { COLORS, TEXT_COLORS } from '../constants';
+import { NeuView, NeuPressable } from '../components/Neumorphic';
 import { getNeuPalette, NEU_ACCENT, NEU_DANGER, NEU_RADIUS } from '../theme/neumorphic';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -24,6 +25,12 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 // ScrollView in Yoga, so a fixed height gives it something concrete to
 // flex against, letting it reliably fill the remaining space and scroll.
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.72;
+
+// Matches the mini swatch grid used throughout NoteModal's Styling bar and
+// SettingsModal's "Default note/text color" rows — same size/gap tokens so
+// a swatch here looks identical to one there.
+const MINI_SWATCH = 22;
+const MINI_GAP = 6;
 
 type TabModalProps = {
   visible: boolean;
@@ -37,6 +44,7 @@ type TabModalProps = {
     textColor?: string,
     backgroundImageUrl?: string,
     screenBackgroundImageUrl?: string,
+    screenBackgroundColor?: string,
   ) => void;
   onDelete: (id?: string) => void;
   onCancel: () => void;
@@ -54,6 +62,15 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
   const [textColorHex, setTextColorHex] = useState(getHexInputValue(editing?.textColor));
   const [backgroundImageUrl, setBackgroundImageUrl] = useState(editing?.backgroundImageUrl || '');
   const [screenBackgroundImageUrl, setScreenBackgroundImageUrl] = useState(editing?.screenBackgroundImageUrl || '');
+  const [screenBackgroundColorHex, setScreenBackgroundColorHex] = useState(getHexInputValue(editing?.screenBackgroundColor));
+  // Which single input is shown for each background — Color or Image.
+  // Defaults to Color for a brand-new tab; an existing tab that already has
+  // an image set opens on Image instead so its current setup is visible
+  // right away. Switching modes only changes which field is shown/edited —
+  // the other field's value is left alone in state, so toggling back and
+  // forth doesn't lose anything already typed.
+  const [labelBgMode, setLabelBgMode] = useState<'color' | 'image'>(editing?.backgroundImageUrl ? 'image' : 'color');
+  const [tabBgMode, setTabBgMode] = useState<'color' | 'image'>(editing?.screenBackgroundImageUrl ? 'image' : 'color');
   const [afterTabId, setAfterTabId] = useState<string | undefined>(editing?.id ? undefined : 'general');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -63,6 +80,9 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
     setTextColorHex(getHexInputValue(editing?.textColor));
     setBackgroundImageUrl(editing?.backgroundImageUrl || '');
     setScreenBackgroundImageUrl(editing?.screenBackgroundImageUrl || '');
+    setScreenBackgroundColorHex(getHexInputValue(editing?.screenBackgroundColor));
+    setLabelBgMode(editing?.backgroundImageUrl ? 'image' : 'color');
+    setTabBgMode(editing?.screenBackgroundImageUrl ? 'image' : 'color');
     setAfterTabId(editing ? undefined : 'general');
     setIsDropdownOpen(false);
   }, [editing, visible]);
@@ -75,11 +95,13 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
 
   const handleColorChange = (text: string) => setColorHex(sanitizeHex(text));
   const handleTextColorChange = (text: string) => setTextColorHex(sanitizeHex(text));
+  const handleScreenBackgroundColorChange = (text: string) => setScreenBackgroundColorHex(sanitizeHex(text));
 
   const handleSave = () => {
     const trimmedName = name.trim() || 'New';
     const finalColor = normalizeHexColor(colorHex.trim()) || undefined;
     const finalTextColor = normalizeHexColor(textColorHex.trim()) || undefined;
+    const finalScreenBackgroundColor = normalizeHexColor(screenBackgroundColorHex.trim()) || undefined;
     onSave(
       editing?.id,
       trimmedName,
@@ -88,6 +110,7 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
       finalTextColor,
       backgroundImageUrl.trim() || undefined,
       screenBackgroundImageUrl.trim() || undefined,
+      finalScreenBackgroundColor,
     );
   };
 
@@ -95,220 +118,347 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
   // placeholder for a brand-new tab with nothing typed yet.
   const previewColor = normalizeHexColor(colorHex) || editing?.color || '#CCCCCC';
   const previewTextColor = normalizeHexColor(textColorHex) || editing?.textColor || '#FFFFFF';
+  const previewScreenBackgroundColor = normalizeHexColor(screenBackgroundColorHex) || editing?.screenBackgroundColor || '#CCCCCC';
   const resolvedPreviewImage = resolveImageUrl(backgroundImageUrl);
   const resolvedScreenPreviewImage = resolveImageUrl(screenBackgroundImageUrl);
+
+  // ── Settings-style building blocks ──────────────────────────────────────
+  // Same raised-card treatment SettingsModal's SectionCard uses (NeuView,
+  // NEU_RADIUS.lg, isDark) — every field group below sits inside one of
+  // these instead of just floating on the modal's own background.
+  const SectionCard = ({ children, style }: { children: React.ReactNode; style?: any }) => (
+    <NeuView isDark={isDark} radius={NEU_RADIUS.lg} style={[modalStyles.sectionCard, style]}>
+      {children}
+    </NeuView>
+  );
+
+  // Preset swatch grid — same shape as the Styling bar's color grid and
+  // SettingsModal's "Default note/text color" rows: a NeuView chip per
+  // color, a dark selection ring + checkmark on whichever one matches the
+  // current hex field.
+  const renderSwatchGrid = (palette: string[], currentHex: string, onPick: (hex: string) => void) => (
+    <View style={modalStyles.swatchGrid}>
+      {palette.map(color => {
+        const selected = normalizeHexColor(currentHex) === color;
+        return (
+          <TouchableOpacity key={color} onPress={() => onPick(getHexInputValue(color))} activeOpacity={0.8}>
+            <NeuView
+              isDark={isDark}
+              radius={7}
+              backgroundColor={color}
+              style={[modalStyles.swatch, selected && modalStyles.swatchSel]}
+            >
+              {selected && <Text style={modalStyles.swatchCheck}>✓</Text>}
+            </NeuView>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
       <Pressable style={modalStyles.overlay} onPress={onCancel}>
-        {/* Flat surface, no NeuView here on purpose — the raised dual-shadow
-            reads as a harsh white bloom against the dark backdrop. Matches
-            how PinSetupModal / StickieStyleNameModal already do their modal
-            cards: flat p.base background, no shadow, inputs inside still
-            carry the neumorphic inset treatment. */}
-        <Pressable
-          style={[
-            modalStyles.modalCard,
-            { backgroundColor: p.base, height: MODAL_HEIGHT },
-          ]}
+        {/* Shadow-casting wrapper, separate from the card that actually clips
+            its content. A raised shadow and overflow:'hidden' can't live on
+            the same view (the corners that get clipped take the shadow with
+            them), so — same two-layer trick NeuView's own raised mode uses
+            internally — the shadow lives on this outer, non-clipping View,
+            and modalCard (overflow:'hidden', for the rounded ScrollView/
+            footer) sits inside it at an identical size/radius/background.
+
+            Plain View + onStartShouldSetResponder (not Pressable) on
+            purpose — this still swallows taps so they don't fall through to
+            the overlay's onPress={onCancel}, but unlike a nested Pressable
+            it doesn't compete with the ScrollView below for the drag
+            gesture. Same pattern NoteModal.tsx's card already uses
+            successfully. A Pressable-in-Pressable here worked fine while
+            all the fields fit on screen with nothing to scroll, but started
+            swallowing the scroll gesture itself once there was enough
+            content to actually need scrolling. */}
+        <View
+          style={[modalStyles.modalCardShadow, { backgroundColor: p.base }]}
+          onStartShouldSetResponder={() => true}
         >
-          <View style={modalStyles.topToolbar}>
-            <Text style={[modalStyles.headerLabel, { color: p.textSecondary }]}>{editing ? 'Edit tab:' : 'New tab:'}</Text>
-          </View>
-
-          <View style={[modalStyles.dividerLine, { backgroundColor: `${p.darkShadow}55` }]} />
-
-          <ScrollView
-            style={modalStyles.scrollArea}
-            contentContainerStyle={modalStyles.formBody}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>name</Text>
-              <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm}>
-                <TextInput
-                  style={[modalStyles.textInput, { color: p.textPrimary }]}
-                  placeholder="Enter name"
-                  placeholderTextColor={p.textSecondary}
-                  value={name}
-                  onChangeText={setName}
-                  autoCorrect={false}
-                />
-              </NeuView>
+          <View style={[modalStyles.modalCard, { backgroundColor: p.base, height: MODAL_HEIGHT }]}>
+            <View style={modalStyles.topToolbar}>
+              <Text style={[modalStyles.headerLabel, { color: p.textSecondary }]}>{editing ? 'Edit tab:' : 'New tab:'}</Text>
             </View>
 
-            <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>background</Text>
-              <View style={modalStyles.colorRow}>
-                <NeuView isDark={isDark} radius={9} backgroundColor={previewColor} style={modalStyles.colorSwatch}>
-                  {!!resolvedPreviewImage && (
-                    <Image source={{ uri: resolvedPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                  )}
-                </NeuView>
-                <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
-                  <TextInput
-                    style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
-                    placeholder="e.g. FF5733"
-                    placeholderTextColor={p.textSecondary}
-                    value={colorHex}
-                    onChangeText={handleColorChange}
-                    maxLength={8}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                  />
-                </NeuView>
-              </View>
-            </View>
+            <View style={[modalStyles.dividerLine, { backgroundColor: `${p.darkShadow}55` }]} />
 
-            <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>tab label image</Text>
-              <Text style={[modalStyles.itemHint, { color: p.textSecondary }]}>Shown behind the tab pill itself. Google Drive link ("Anyone with the link") or any public image URL. Overrides the color above.</Text>
-              <View style={modalStyles.colorRow}>
-                {!!resolvedPreviewImage && (
-                  <NeuView isDark={isDark} radius={9} style={modalStyles.colorSwatch}>
-                    <Image source={{ uri: resolvedPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                  </NeuView>
-                )}
-                <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
-                  <TextInput
-                    style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
-                    placeholder="Paste a link…"
-                    placeholderTextColor={p.textSecondary}
-                    value={backgroundImageUrl}
-                    onChangeText={setBackgroundImageUrl}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </NeuView>
-              </View>
-            </View>
-
-            <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>main screen background image</Text>
-              <Text style={[modalStyles.itemHint, { color: p.textSecondary }]}>Shown as the app's wallpaper behind the notes grid whenever this tab is open. Independent of the tab label image above — set one, both, or neither.</Text>
-              <View style={modalStyles.colorRow}>
-                {!!resolvedScreenPreviewImage && (
-                  <NeuView isDark={isDark} radius={9} style={modalStyles.colorSwatch}>
-                    <Image source={{ uri: resolvedScreenPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                  </NeuView>
-                )}
-                <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
-                  <TextInput
-                    style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
-                    placeholder="Paste a link…"
-                    placeholderTextColor={p.textSecondary}
-                    value={screenBackgroundImageUrl}
-                    onChangeText={setScreenBackgroundImageUrl}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </NeuView>
-              </View>
-            </View>
-
-            <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>label color</Text>
-              <View style={modalStyles.colorRow}>
-                <NeuView isDark={isDark} radius={9} backgroundColor={previewTextColor} style={modalStyles.colorSwatch} />
-                <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
-                  <TextInput
-                    style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
-                    placeholder="e.g. FFFFFF"
-                    placeholderTextColor={p.textSecondary}
-                    value={textColorHex}
-                    onChangeText={handleTextColorChange}
-                    maxLength={8}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                  />
-                </NeuView>
-              </View>
-            </View>
-
-            {showAfterField && (
+            <ScrollView
+              style={modalStyles.scrollArea}
+              contentContainerStyle={modalStyles.formBody}
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <View style={modalStyles.formGroup}>
-                <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>place after</Text>
+                <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>Name</Text>
+                <SectionCard>
+                  <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm}>
+                    <TextInput
+                      style={[modalStyles.textInput, { color: p.textPrimary }]}
+                      placeholder="Enter name"
+                      placeholderTextColor={p.textSecondary}
+                      value={name}
+                      onChangeText={setName}
+                      autoCorrect={false}
+                    />
+                  </NeuView>
+                </SectionCard>
+              </View>
 
-                <NeuView isDark={isDark} inset={!isDropdownOpen} radius={NEU_RADIUS.sm} backgroundColor={isDropdownOpen ? p.base : undefined}>
-                  <TouchableOpacity
-                    style={modalStyles.dropdownTrigger}
-                    onPress={() => setIsDropdownOpen(prev => !prev)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[modalStyles.dropdownTriggerText, { color: p.textPrimary }]}>
-                      {afterTabId ? tabs.find(tab => tab.id === afterTabId)?.name : 'After general'}
-                    </Text>
-                    <Text style={[modalStyles.dropdownArrow, { color: p.textSecondary }]}>{isDropdownOpen ? '▲' : '▼'}</Text>
-                  </TouchableOpacity>
-                </NeuView>
-
-                {isDropdownOpen && (
-                  <NeuView isDark={isDark} radius={NEU_RADIUS.sm} style={modalStyles.dropdownOptionsContainer}>
-                    {afterOptions.map(tab => (
-                      <TouchableOpacity
-                        key={tab.id}
-                        style={[
-                          modalStyles.dropdownOptionRow,
-                          { borderColor: `${p.darkShadow}40` },
-                        ]}
-                        onPress={() => {
-                          setAfterTabId(tab.id);
-                          setIsDropdownOpen(false);
-                        }}
+              <View style={modalStyles.formGroup}>
+                <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>Label Background</Text>
+                <Text style={[modalStyles.itemHint, { color: p.textSecondary }]}>Shown behind the tab pill itself.</Text>
+                <SectionCard>
+                  <NeuView isDark={isDark} inset radius={10} style={modalStyles.modeToggleTrack}>
+                    {(['color', 'image'] as const).map(mode => (
+                      <NeuPressable
+                        key={mode}
+                        isDark={isDark}
+                        radius={8}
+                        backgroundColor={labelBgMode === mode ? p.base : undefined}
+                        style={modalStyles.modeToggleBtn}
+                        onPress={() => setLabelBgMode(mode)}
                       >
-                        <Text style={[
-                          modalStyles.optionText,
-                          { color: p.textPrimary },
-                          afterTabId === tab.id && { color: NEU_ACCENT, fontWeight: '700' },
-                        ]}>
-                          {tab.name}
+                        <Text style={[modalStyles.modeToggleText, { color: labelBgMode === mode ? p.textPrimary : p.textSecondary, fontWeight: labelBgMode === mode ? '700' : '400' }]}>
+                          {mode === 'color' ? 'Color' : 'Image'}
                         </Text>
-                      </TouchableOpacity>
+                      </NeuPressable>
                     ))}
                   </NeuView>
-                )}
+                  {labelBgMode === 'color' ? (
+                    <>
+                      <View style={[modalStyles.colorRow, modalStyles.modeFieldSpacing]}>
+                        <NeuView isDark={isDark} radius={9} backgroundColor={previewColor} style={modalStyles.colorSwatch} />
+                        <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                          <TextInput
+                            style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                            placeholder="e.g. FF5733"
+                            placeholderTextColor={p.textSecondary}
+                            value={colorHex}
+                            onChangeText={handleColorChange}
+                            maxLength={8}
+                            autoCapitalize="characters"
+                            autoCorrect={false}
+                          />
+                        </NeuView>
+                      </View>
+                      <View style={modalStyles.modeFieldSpacing}>
+                        {renderSwatchGrid(COLORS, colorHex, setColorHex)}
+                      </View>
+                    </>
+                  ) : (
+                    <View style={[modalStyles.colorRow, modalStyles.modeFieldSpacing]}>
+                      {!!resolvedPreviewImage && (
+                        <NeuView isDark={isDark} radius={9} style={modalStyles.colorSwatch}>
+                          <Image source={{ uri: resolvedPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        </NeuView>
+                      )}
+                      <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                        <TextInput
+                          style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                          placeholder="Paste a link…"
+                          placeholderTextColor={p.textSecondary}
+                          value={backgroundImageUrl}
+                          onChangeText={setBackgroundImageUrl}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                      </NeuView>
+                    </View>
+                  )}
+                </SectionCard>
               </View>
-            )}
-          </ScrollView>
 
-          {/* Footer — plain TouchableOpacity buttons, deliberately NOT
-              NeuPressable here. NeuPressable only forwards `style` to its
-              inner NeuView, never to the outer Pressable — harmless for a
-              button that sizes to its own content, but it means flex:1
-              never reaches the actual flex-participating element, which is
-              exactly what was collapsing this row to invisible. Same fix
-              StickieStyleNameModal.tsx already uses for its own Cancel/Save. */}
-          <View style={modalStyles.footer}>
-            <View style={modalStyles.actionButtonRow}>
-              <TouchableOpacity
-                style={[modalStyles.btn, { backgroundColor: p.insetBase }]}
-                onPress={onCancel}
-                activeOpacity={0.8}
-              >
-                <Text style={modalStyles.btnCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[modalStyles.btn, { backgroundColor: NEU_ACCENT }]}
-                onPress={handleSave}
-                activeOpacity={0.8}
-              >
-                <Text style={modalStyles.btnSaveText}>{editing ? 'Save' : 'Create'}</Text>
-              </TouchableOpacity>
+              <View style={modalStyles.formGroup}>
+                <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>Label Color</Text>
+                <SectionCard>
+                  <View style={modalStyles.colorRow}>
+                    <NeuView isDark={isDark} radius={9} backgroundColor={previewTextColor} style={modalStyles.colorSwatch} />
+                    <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                      <TextInput
+                        style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                        placeholder="e.g. FFFFFF"
+                        placeholderTextColor={p.textSecondary}
+                        value={textColorHex}
+                        onChangeText={handleTextColorChange}
+                        maxLength={8}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                      />
+                    </NeuView>
+                  </View>
+                  <View style={modalStyles.modeFieldSpacing}>
+                    {renderSwatchGrid(TEXT_COLORS, textColorHex, setTextColorHex)}
+                  </View>
+                </SectionCard>
+              </View>
+
+              <View style={modalStyles.formGroup}>
+                <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>Tab Background</Text>
+                <Text style={[modalStyles.itemHint, { color: p.textSecondary }]}>Shown as the app's wallpaper behind the notes grid whenever this tab is open.</Text>
+                <SectionCard>
+                  <NeuView isDark={isDark} inset radius={10} style={modalStyles.modeToggleTrack}>
+                    {(['color', 'image'] as const).map(mode => (
+                      <NeuPressable
+                        key={mode}
+                        isDark={isDark}
+                        radius={8}
+                        backgroundColor={tabBgMode === mode ? p.base : undefined}
+                        style={modalStyles.modeToggleBtn}
+                        onPress={() => setTabBgMode(mode)}
+                      >
+                        <Text style={[modalStyles.modeToggleText, { color: tabBgMode === mode ? p.textPrimary : p.textSecondary, fontWeight: tabBgMode === mode ? '700' : '400' }]}>
+                          {mode === 'color' ? 'Color' : 'Image'}
+                        </Text>
+                      </NeuPressable>
+                    ))}
+                  </NeuView>
+                  {tabBgMode === 'color' ? (
+                    <>
+                      <View style={[modalStyles.colorRow, modalStyles.modeFieldSpacing]}>
+                        <NeuView isDark={isDark} radius={9} backgroundColor={previewScreenBackgroundColor} style={modalStyles.colorSwatch} />
+                        <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                          <TextInput
+                            style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                            placeholder="e.g. D6CCF9"
+                            placeholderTextColor={p.textSecondary}
+                            value={screenBackgroundColorHex}
+                            onChangeText={handleScreenBackgroundColorChange}
+                            maxLength={8}
+                            autoCapitalize="characters"
+                            autoCorrect={false}
+                          />
+                        </NeuView>
+                      </View>
+                      <View style={modalStyles.modeFieldSpacing}>
+                        {renderSwatchGrid(COLORS, screenBackgroundColorHex, setScreenBackgroundColorHex)}
+                      </View>
+                    </>
+                  ) : (
+                    <View style={[modalStyles.colorRow, modalStyles.modeFieldSpacing]}>
+                      {!!resolvedScreenPreviewImage && (
+                        <NeuView isDark={isDark} radius={9} style={modalStyles.colorSwatch}>
+                          <Image source={{ uri: resolvedScreenPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        </NeuView>
+                      )}
+                      <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
+                        <TextInput
+                          style={[modalStyles.textInput, modalStyles.colorInput, { color: p.textPrimary }]}
+                          placeholder="Paste a link…"
+                          placeholderTextColor={p.textSecondary}
+                          value={screenBackgroundImageUrl}
+                          onChangeText={setScreenBackgroundImageUrl}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                      </NeuView>
+                    </View>
+                  )}
+                </SectionCard>
+              </View>
+
+              {showAfterField && (
+                <View style={modalStyles.formGroup}>
+                  <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>place after</Text>
+                  <SectionCard>
+                    <NeuView isDark={isDark} inset={!isDropdownOpen} radius={NEU_RADIUS.sm} backgroundColor={isDropdownOpen ? p.base : undefined}>
+                      <TouchableOpacity
+                        style={modalStyles.dropdownTrigger}
+                        onPress={() => setIsDropdownOpen(prev => !prev)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[modalStyles.dropdownTriggerText, { color: p.textPrimary }]}>
+                          {afterTabId ? tabs.find(tab => tab.id === afterTabId)?.name : 'After general'}
+                        </Text>
+                        <Text style={[modalStyles.dropdownArrow, { color: p.textSecondary }]}>{isDropdownOpen ? '▲' : '▼'}</Text>
+                      </TouchableOpacity>
+                    </NeuView>
+
+                    {isDropdownOpen && (
+                      <NeuView isDark={isDark} radius={NEU_RADIUS.sm} style={modalStyles.dropdownOptionsContainer}>
+                        {afterOptions.map(tab => (
+                          <TouchableOpacity
+                            key={tab.id}
+                            style={[
+                              modalStyles.dropdownOptionRow,
+                              { borderColor: `${p.darkShadow}40` },
+                            ]}
+                            onPress={() => {
+                              setAfterTabId(tab.id);
+                              setIsDropdownOpen(false);
+                            }}
+                          >
+                            <Text style={[
+                              modalStyles.optionText,
+                              { color: p.textPrimary },
+                              afterTabId === tab.id && { color: NEU_ACCENT, fontWeight: '700' },
+                            ]}>
+                              {tab.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </NeuView>
+                    )}
+                  </SectionCard>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Footer — NeuPressable buttons, each wrapped in its own plain
+                flex:1 View. NeuPressable only forwards `style` to its inner
+                NeuView, never to the outer Pressable, so flex:1 has to live
+                on a wrapping View for the row to actually split evenly —
+                moving the flex out one level keeps the raised neumorphic
+                look (matching Settings' buttons) without hitting the
+                "row collapses to invisible" issue plain TouchableOpacitys
+                were dodging before. */}
+            <View style={modalStyles.footer}>
+              <View style={modalStyles.actionButtonRow}>
+                <View style={modalStyles.footerBtnWrap}>
+                  <NeuPressable
+                    isDark={isDark}
+                    radius={NEU_RADIUS.sm}
+                    backgroundColor={p.insetBase}
+                    style={modalStyles.btnInner}
+                    onPress={onCancel}
+                  >
+                    <Text style={modalStyles.btnCancelText}>Cancel</Text>
+                  </NeuPressable>
+                </View>
+                <View style={modalStyles.footerBtnWrap}>
+                  <NeuPressable
+                    isDark={isDark}
+                    radius={NEU_RADIUS.sm}
+                    backgroundColor={NEU_ACCENT}
+                    style={modalStyles.btnInner}
+                    onPress={handleSave}
+                  >
+                    <Text style={modalStyles.btnSaveText}>{editing ? 'Save' : 'Create'}</Text>
+                  </NeuPressable>
+                </View>
+              </View>
+
+              {editing?.id && (
+                <View style={modalStyles.deleteRowWrap}>
+                  <NeuPressable
+                    isDark={isDark}
+                    radius={NEU_RADIUS.sm}
+                    backgroundColor={p.insetBase}
+                    style={modalStyles.deleteRowInner}
+                    onPress={() => onDelete(editing.id)}
+                  >
+                    <Text style={modalStyles.deleteRowText}>Delete Tab</Text>
+                  </NeuPressable>
+                </View>
+              )}
             </View>
-
-            {editing?.id && (
-              <TouchableOpacity
-                style={[modalStyles.deleteRow, { backgroundColor: p.insetBase }]}
-                onPress={() => onDelete(editing.id)}
-                activeOpacity={0.8}
-              >
-                <Text style={modalStyles.deleteRowText}>Delete Tab</Text>
-              </TouchableOpacity>
-            )}
           </View>
-        </Pressable>
+        </View>
       </Pressable>
     </Modal>
   );
@@ -323,10 +473,22 @@ const modalStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalCard: {
+  // Shadow-casting wrapper — see the big comment above the JSX for why this
+  // is split from modalCard. Same soft-drop-shadow tokens the app already
+  // uses for its other floating cards (StickieStyleNameModal's confirm
+  // overlay), sized/radiused to match modalCard exactly underneath it.
+  modalCardShadow: {
     width: '86%',
     maxWidth: 340,
-    borderRadius: 24,
+    borderRadius: NEU_RADIUS.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  modalCard: {
+    borderRadius: NEU_RADIUS.xl,
     paddingVertical: 12,
     overflow: 'hidden',
   },
@@ -358,6 +520,11 @@ const modalStyles = StyleSheet.create({
   formGroup: {
     marginVertical: 8,
   },
+  // Raised card every field group sits inside — same NEU_RADIUS.lg + padding
+  // SettingsModal's SectionCard uses for every section on that screen.
+  sectionCard: {
+    padding: 14,
+  },
   itemLabel: {
     fontSize: 14,
     fontWeight: '600',
@@ -385,6 +552,43 @@ const modalStyles = StyleSheet.create({
   },
   colorInput: {
     flex: 1,
+  },
+  modeToggleTrack: {
+    flexDirection: 'row',
+    padding: 3,
+  },
+  modeToggleBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 7,
+  },
+  modeToggleText: {
+    fontSize: 12.5,
+  },
+  modeFieldSpacing: {
+    marginTop: 10,
+  },
+  // Preset color swatch grid — same tokens as NoteModal's Styling bar /
+  // SettingsModal's default-color rows.
+  swatchGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: MINI_GAP,
+  },
+  swatch: {
+    width: MINI_SWATCH,
+    height: MINI_SWATCH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchSel: {
+    borderWidth: 2,
+    borderColor: '#3A4358',
+  },
+  swatchCheck: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1C1C1E',
   },
   dropdownTrigger: {
     height: 42,
@@ -419,13 +623,16 @@ const modalStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  btn: {
+  // Plain flex:1 wrapper around each NeuPressable button — see the footer
+  // comment above the JSX for why the flex has to live out here.
+  footerBtnWrap: {
     flex: 1,
+    marginHorizontal: 4,
+  },
+  btnInner: {
     height: 46,
-    borderRadius: NEU_RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 4,
   },
   btnCancelText: {
     fontSize: 15,
@@ -437,12 +644,12 @@ const modalStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  // Same inset/danger treatment as the Cancel button above, per earlier request.
-  deleteRow: {
+  deleteRowWrap: {
     marginTop: 12,
     marginHorizontal: 4,
+  },
+  deleteRowInner: {
     paddingVertical: 13,
-    borderRadius: NEU_RADIUS.sm,
     alignItems: 'center',
   },
   deleteRowText: {
