@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NoteCard from '../cards/NoteCard';
+import SettingsIcon from '../components/SettingsIcon';
 import NoteListRow from '../components/NoteListRow';
 import NoteModal from '../modals/NoteModal';
 import TabModal from '../modals/TabModal';
@@ -783,7 +784,7 @@ const MainScreen = () => {
           onPress={() => setShowSettings(true)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Text style={{ fontSize: 18, color: NEU_ACCENT }}>⚙️</Text>
+          <SettingsIcon size={20} color={NEU_ACCENT} />
         </NeuPressable>
       </View>
 

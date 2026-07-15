@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity } from 'react-native';
 import PinDots from './PinDots';
 import PinKeypad from './PinKeypad';
-import { NeuPressable } from './Neumorphic';
+import { NeuView, NeuPressable } from './Neumorphic';
 import { getNeuPalette, NEU_ACCENT, NEU_DANGER, NEU_RADIUS } from '../theme/neumorphic';
 
 type Mode = 'create' | 'change' | 'disable';
@@ -102,7 +102,7 @@ const PinSetupModal: React.FC<PinSetupModalProps> = ({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ width: 320, backgroundColor: p.base, borderRadius: 24, paddingVertical: 24, paddingHorizontal: 20, alignItems: 'center' }}>
+        <NeuView isDark={isDark} radius={NEU_RADIUS.xl} style={{ width: 320, paddingVertical: 24, paddingHorizontal: 20, alignItems: 'center' }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: p.textPrimary, marginBottom: 4 }}>{title}</Text>
           <Text style={{ fontSize: 12, color: error ? NEU_DANGER : p.textSecondary, height: 16 }}>
             {error || ' '}
@@ -148,7 +148,7 @@ const PinSetupModal: React.FC<PinSetupModalProps> = ({
           <TouchableOpacity onPress={onClose} style={{ marginTop: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: p.textSecondary }}>Cancel</Text>
           </TouchableOpacity>
-        </View>
+        </NeuView>
       </View>
     </Modal>
   );

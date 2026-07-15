@@ -21,6 +21,7 @@ import { FRAME_COMPONENTS } from '../frames';
 import SwipeToAction from '../components/SwipeToAction';
 import { resolveImageUrl } from '../utils/googleDriveImage';
 import { NeuView, NeuPressable } from '../components/Neumorphic';
+import NeuColorPickerModal from '../components/NeuColorPickerModal';
 import CheckboxIcon from '../components/CheckboxIcon';
 import { NEU_RADIUS, NEU_ACCENT, NEU_DANGER, getNeuPalette } from '../theme/neumorphic';
 
@@ -256,6 +257,10 @@ const NoteModal = ({
   const [barScrollX, setBarScrollX] = useState(0);
   const [barViewportWidth, setBarViewportWidth] = useState(0);
   const [barContentWidth, setBarContentWidth] = useState(0);
+  // Which swatchGrid's "custom color" tile opened NeuColorPickerModal —
+  // null when closed. Lets Background and Font Color share one picker
+  // instance instead of two.
+  const [colorPickerTarget, setColorPickerTarget] = useState<'background' | 'font' | null>(null);
 
   // Mirrors the checklistSnapshot prop into a ref so the type-conversion
   // effect below can read/update it synchronously without needing to be a
@@ -557,13 +562,12 @@ const NoteModal = ({
           style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: showStyling ? STYLING_BAR_HEIGHT : 0 }}
           pointerEvents="box-none"
         >
-          <View
-            style={[
-              s.card,
-              { backgroundColor: (FrameComponent || resolvedBgImageUrl) ? 'transparent' : selectedColor },
-              { height: MODAL_HEIGHT },
-            ]}
+          <NeuView
+            radius={28}
+            backgroundColor={(FrameComponent || resolvedBgImageUrl) ? 'transparent' : selectedColor}
+            style={[s.card, { height: MODAL_HEIGHT }]}
             onStartShouldSetResponder={() => true}
+            noShadow
           >
             {/* SVG frame background */}
             {FrameComponent && (
@@ -809,7 +813,7 @@ const NoteModal = ({
               </>
             )}
 
-          </View>
+          </NeuView>
         </View>
 
         {/* Styling bar — bottom sheet, sibling to the card, inside the same Modal */}
@@ -897,6 +901,15 @@ const NoteModal = ({
                       </NeuView>
                     </TouchableOpacity>
                   ))}
+                  <TouchableOpacity onPress={() => setColorPickerTarget('background')}>
+                    <NeuView
+                      radius={7}
+                      backgroundColor={COLORS.includes(selectedColor) ? undefined : selectedColor}
+                      style={{ width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: p.textSecondary }}>+</Text>
+                    </NeuView>
+                  </TouchableOpacity>
                 </View>
                 <View
                   style={[useSvgBackground && barStyles.disabled, { marginTop: 8 }]}
@@ -937,6 +950,15 @@ const NoteModal = ({
                       </NeuView>
                     </TouchableOpacity>
                   ))}
+                  <TouchableOpacity onPress={() => setColorPickerTarget('font')}>
+                    <NeuView
+                      radius={7}
+                      backgroundColor={TEXT_COLORS.includes(selectedTextColor) ? undefined : selectedTextColor}
+                      style={{ width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: p.textSecondary }}>+</Text>
+                    </NeuView>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -1242,6 +1264,18 @@ const NoteModal = ({
           </View>
         )}
 
+        <NeuColorPickerModal
+          visible={colorPickerTarget !== null}
+          initialColor={colorPickerTarget === 'background' ? selectedColor : selectedTextColor}
+          title={colorPickerTarget === 'background' ? 'Background color' : 'Font color'}
+          onCancel={() => setColorPickerTarget(null)}
+          onSave={(hex) => {
+            if (colorPickerTarget === 'background') onColorChange(hex);
+            else if (colorPickerTarget === 'font') onTextColorChange(hex);
+            setColorPickerTarget(null);
+          }}
+        />
+
         </SwipeToAction>
 
       </KeyboardAvoidingView>
@@ -1262,8 +1296,6 @@ const s = StyleSheet.create({
   },
   card: {
     width: MODAL_WIDTH,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
     paddingHorizontal: CARD_HORIZONTAL_PADDING,
     paddingTop: 24,
     paddingBottom: 24,
@@ -1292,9 +1324,27 @@ const s = StyleSheet.create({
     marginTop: 12,
   },
   btn: { flex: 0.47, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  btnCancel: { backgroundColor: '#F2F2F7' },
-  btnConfirm: { backgroundColor: '#007AFF' },
-  cancelText: { fontSize: 15, fontWeight: '700', color: '#FF3B30' },
+  // Plain View + manual shadow, not NeuPressable — NeuPressable only forwards
+  // `style` to its inner NeuView, never the outer Pressable, so a flex:0.47
+  // button here would never actually get that flex sizing (same reasoning
+  // as TabModal's footer buttons).
+  btnCancel: {
+    backgroundColor: '#DEE4ED',
+    borderWidth: 1.5,
+    borderTopColor: 'rgba(0,0,0,0.15)',
+    borderLeftColor: 'rgba(0,0,0,0.15)',
+    borderBottomColor: 'rgba(255,255,255,0.7)',
+    borderRightColor: 'rgba(255,255,255,0.7)',
+  },
+  btnConfirm: {
+    backgroundColor: NEU_ACCENT,
+    shadowColor: '#A6B0C3',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  cancelText: { fontSize: 15, fontWeight: '700', color: NEU_DANGER },
   confirmText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });
 

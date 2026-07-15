@@ -4,8 +4,9 @@
 // asking the user to name it before it's saved.
 
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { getNeuPalette, NEU_ACCENT, NEU_DANGER } from '../theme/neumorphic';
+import { Modal, View, Text, TextInput, StyleSheet } from 'react-native';
+import { NeuView, NeuPressable } from './Neumorphic';
+import { getNeuPalette, NEU_ACCENT, NEU_DANGER, NEU_RADIUS } from '../theme/neumorphic';
 
 type StickieStyleNameModalProps = {
   visible: boolean;
@@ -45,9 +46,14 @@ const StickieStyleNameModal: React.FC<StickieStyleNameModalProps> = ({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
       <View style={s.backdrop}>
-        <View style={[s.card, { backgroundColor: p.base }]}>
+        <NeuView isDark={isDark} radius={NEU_RADIUS.xl} style={s.card}>
           <Text style={[s.title, { color: p.textPrimary }]}>Name this style</Text>
-          <View style={[s.inputWrap, { borderColor: error ? NEU_DANGER : `${p.darkShadow}55` }]}>
+          <NeuView
+            isDark={isDark}
+            inset
+            radius={NEU_RADIUS.sm}
+            style={error ? { borderWidth: 1.5, borderColor: NEU_DANGER } : undefined}
+          >
             <TextInput
               style={[s.input, { color: p.textPrimary }]}
               value={name}
@@ -58,18 +64,18 @@ const StickieStyleNameModal: React.FC<StickieStyleNameModalProps> = ({
               onSubmitEditing={handleSave}
               returnKeyType="done"
             />
-          </View>
+          </NeuView>
           {!!error && <Text style={s.error}>{error}</Text>}
 
           <View style={s.btnRow}>
-            <TouchableOpacity style={[s.btn, s.btnCancel]} onPress={onCancel} activeOpacity={0.8}>
+            <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} style={s.btn} onPress={onCancel}>
               <Text style={s.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.btn, s.btnSave]} onPress={handleSave} activeOpacity={0.8}>
+            </NeuPressable>
+            <NeuPressable isDark={isDark} radius={NEU_RADIUS.sm} backgroundColor={NEU_ACCENT} style={s.btn} onPress={handleSave}>
               <Text style={s.saveText}>Save</Text>
-            </TouchableOpacity>
+            </NeuPressable>
           </View>
-        </View>
+        </NeuView>
       </View>
     </Modal>
   );
@@ -79,15 +85,12 @@ export default StickieStyleNameModal;
 
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
-  card: { width: 300, borderRadius: 20, padding: 22 },
+  card: { width: 300, padding: 22 },
   title: { fontSize: 16, fontWeight: '700', marginBottom: 14, textAlign: 'center' },
-  inputWrap: { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12 },
-  input: { height: 44, fontSize: 15 },
+  input: { height: 44, paddingHorizontal: 12, fontSize: 15 },
   error: { color: NEU_DANGER, fontSize: 12, marginTop: 6, textAlign: 'center' },
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  btn: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  btnCancel: { backgroundColor: '#F2F2F7' },
-  btnSave: { backgroundColor: NEU_ACCENT },
-  cancelText: { fontSize: 15, fontWeight: '700', color: '#FF3B30' },
+  btn: { flex: 1, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  cancelText: { fontSize: 15, fontWeight: '700', color: NEU_DANGER },
   saveText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });

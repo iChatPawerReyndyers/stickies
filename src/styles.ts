@@ -272,6 +272,14 @@ export default StyleSheet.create({
     borderTopRightRadius: 20,
     height: '90%',
     paddingBottom: 20,
+    // A bottom sheet is flush with the screen edges — the usual raised
+    // dual-shadow pair (light+dark on opposite corners) has nowhere to sit,
+    // so it just gets a single soft shadow lifting the top edge instead.
+    shadowColor: NEU_DARK_SHADOW,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',

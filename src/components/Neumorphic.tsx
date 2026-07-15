@@ -9,7 +9,7 @@
 // like ScrollViews or variable-height rows.
 
 import React, { useState } from 'react';
-import { View, ViewStyle, StyleProp, Pressable, PressableProps, Platform } from 'react-native';
+import { View, ViewStyle, StyleProp, ViewProps, Pressable, PressableProps, Platform } from 'react-native';
 import { getNeuPalette, NEU_SHADOW, NEU_ACCENT, NEU_RADIUS } from '../theme/neumorphic';
 
 const IS_ANDROID = Platform.OS === 'android';
@@ -59,7 +59,7 @@ const buildLightBlurLayers = (distance: number): BlurLayer[] => {
   }));
 };
 
-type NeuViewProps = {
+type NeuViewProps = ViewProps & {
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   radius?: number;
@@ -74,6 +74,11 @@ type NeuViewProps = {
   noShadow?: boolean;
 };
 
+// Any extra View props (onStartShouldSetResponder, onLayout, etc.) land on
+// the single real content View in both branches below — never on the
+// decorative shadow/border layers — so NeuView can drop in anywhere a plain
+// touch-catching <View> was used before (e.g. a modal card) without losing
+// that behavior.
 export const NeuView: React.FC<NeuViewProps> = ({
   children,
   style,
@@ -83,6 +88,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
   distance = NEU_SHADOW.distance,
   backgroundColor,
   noShadow = false,
+  ...rest
 }) => {
   const p = getNeuPalette(isDark);
   const bg = backgroundColor || (inset ? p.insetBase : p.base);
@@ -98,7 +104,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
     // top/left/right/bottom: 0 always align to this View's own box
     // regardless of its padding, so this stays accurate at any size.
     return (
-      <View style={[{ borderRadius: radius, backgroundColor: bg, overflow: 'hidden' }, style]}>
+      <View style={[{ borderRadius: radius, backgroundColor: bg, overflow: 'hidden' }, style]} {...rest}>
         <View
           pointerEvents="none"
           style={{
@@ -194,6 +200,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
           { borderRadius: radius, backgroundColor: androidRaisedBg },
           style,
         ]}
+        {...rest}
       >
         {children}
       </View>
