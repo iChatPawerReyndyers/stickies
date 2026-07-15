@@ -7,23 +7,53 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03A9AF2F15CF4B06A6E34830 /* DancingScript-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E7B0CD418908412BADAE438A /* DancingScript-Bold.ttf */; };
 		0C80B921A6F3F58F76C31292 /* libPods-Stickies.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-Stickies.a */; };
+		0D6CA1FC9F984AA8B5E4AC77 /* Cardo-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6D98CF65C5A6433B8AB9228C /* Cardo-Regular.ttf */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		1D7CE069E3894817B6DB0410 /* Tinos-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 33AF8285E06148C989F44A1B /* Tinos-BoldItalic.ttf */; };
+		20D8A8C5398F435FB650B0D6 /* Cousine-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = ADEEC560B4964972A94F2E83 /* Cousine-Regular.ttf */; };
+		2143856AD7524DD59D66756F /* Tinos-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7DC268D84A0445A5B04619B0 /* Tinos-Italic.ttf */; };
+		3602220C4086452E9B7783CF /* Cardo-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 391F85B587BA4E72A5D83EB2 /* Cardo-Bold.ttf */; };
+		3A7B1D4D320B4980804B0DAC /* Tinos-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8987E36CAE1F42BF9072936F /* Tinos-Regular.ttf */; };
+		45F59E57920B4E3597F951F0 /* DancingScript-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2F14415FC38E438DAB5A0F41 /* DancingScript-Medium.ttf */; };
+		4DD3D799E76E4583B078DD3D /* Cousine-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CDFE70404500456D9E4046C7 /* Cousine-Bold.ttf */; };
+		5B1E51691A8E49A091949A40 /* DancingScript-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DB616CE855E440F797C35A37 /* DancingScript-Regular.ttf */; };
+		6A6E28D9CBD44E21AE9B8621 /* Cousine-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = AC4C63E62A55405EB1589334 /* Cousine-BoldItalic.ttf */; };
+		6B71DABCE8AD4106918CC7FF /* DancingScript-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 529239D3B39740139E426FD2 /* DancingScript-SemiBold.ttf */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		8B3D34E2522A464397DF768D /* Cardo-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C5AD6EC3379745E6A36F9D32 /* Cardo-Italic.ttf */; };
+		95A4457C000345BB91774A58 /* Tinos-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0161D5BCDC3A4E0496AC5322 /* Tinos-Bold.ttf */; };
+		C3BC9314D4A24D4398F6CA6A /* Cousine-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 630D8247785C4D60802F020A /* Cousine-Italic.ttf */; };
 		F8E42514165230B188A81CE1 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0161D5BCDC3A4E0496AC5322 /* Tinos-Bold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Tinos-Bold.ttf"; path = "../assets/fonts/Tinos-Bold.ttf"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Stickies.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stickies.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Stickies/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Stickies/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = Stickies/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		2F14415FC38E438DAB5A0F41 /* DancingScript-Medium.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "DancingScript-Medium.ttf"; path = "../assets/fonts/DancingScript-Medium.ttf"; sourceTree = "<group>"; };
+		33AF8285E06148C989F44A1B /* Tinos-BoldItalic.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Tinos-BoldItalic.ttf"; path = "../assets/fonts/Tinos-BoldItalic.ttf"; sourceTree = "<group>"; };
+		391F85B587BA4E72A5D83EB2 /* Cardo-Bold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cardo-Bold.ttf"; path = "../assets/fonts/Cardo-Bold.ttf"; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-Stickies.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Stickies.debug.xcconfig"; path = "Target Support Files/Pods-Stickies/Pods-Stickies.debug.xcconfig"; sourceTree = "<group>"; };
+		529239D3B39740139E426FD2 /* DancingScript-SemiBold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "DancingScript-SemiBold.ttf"; path = "../assets/fonts/DancingScript-SemiBold.ttf"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-Stickies.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Stickies.release.xcconfig"; path = "Target Support Files/Pods-Stickies/Pods-Stickies.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-Stickies.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Stickies.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		630D8247785C4D60802F020A /* Cousine-Italic.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cousine-Italic.ttf"; path = "../assets/fonts/Cousine-Italic.ttf"; sourceTree = "<group>"; };
+		6D98CF65C5A6433B8AB9228C /* Cardo-Regular.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cardo-Regular.ttf"; path = "../assets/fonts/Cardo-Regular.ttf"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Stickies/AppDelegate.swift; sourceTree = "<group>"; };
+		7DC268D84A0445A5B04619B0 /* Tinos-Italic.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Tinos-Italic.ttf"; path = "../assets/fonts/Tinos-Italic.ttf"; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Stickies/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		8987E36CAE1F42BF9072936F /* Tinos-Regular.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Tinos-Regular.ttf"; path = "../assets/fonts/Tinos-Regular.ttf"; sourceTree = "<group>"; };
+		AC4C63E62A55405EB1589334 /* Cousine-BoldItalic.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cousine-BoldItalic.ttf"; path = "../assets/fonts/Cousine-BoldItalic.ttf"; sourceTree = "<group>"; };
+		ADEEC560B4964972A94F2E83 /* Cousine-Regular.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cousine-Regular.ttf"; path = "../assets/fonts/Cousine-Regular.ttf"; sourceTree = "<group>"; };
+		C5AD6EC3379745E6A36F9D32 /* Cardo-Italic.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cardo-Italic.ttf"; path = "../assets/fonts/Cardo-Italic.ttf"; sourceTree = "<group>"; };
+		CDFE70404500456D9E4046C7 /* Cousine-Bold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Cousine-Bold.ttf"; path = "../assets/fonts/Cousine-Bold.ttf"; sourceTree = "<group>"; };
+		DB616CE855E440F797C35A37 /* DancingScript-Regular.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "DancingScript-Regular.ttf"; path = "../assets/fonts/DancingScript-Regular.ttf"; sourceTree = "<group>"; };
+		E7B0CD418908412BADAE438A /* DancingScript-Bold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "DancingScript-Bold.ttf"; path = "../assets/fonts/DancingScript-Bold.ttf"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -75,6 +105,7 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				B09A0CA2046043A2B784A0E8 /* Resources */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -87,6 +118,29 @@
 				13B07F961A680F5B00A75B9A /* Stickies.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B09A0CA2046043A2B784A0E8 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				8987E36CAE1F42BF9072936F /* Tinos-Regular.ttf */,
+				AC4C63E62A55405EB1589334 /* Cousine-BoldItalic.ttf */,
+				7DC268D84A0445A5B04619B0 /* Tinos-Italic.ttf */,
+				CDFE70404500456D9E4046C7 /* Cousine-Bold.ttf */,
+				C5AD6EC3379745E6A36F9D32 /* Cardo-Italic.ttf */,
+				E7B0CD418908412BADAE438A /* DancingScript-Bold.ttf */,
+				391F85B587BA4E72A5D83EB2 /* Cardo-Bold.ttf */,
+				630D8247785C4D60802F020A /* Cousine-Italic.ttf */,
+				0161D5BCDC3A4E0496AC5322 /* Tinos-Bold.ttf */,
+				2F14415FC38E438DAB5A0F41 /* DancingScript-Medium.ttf */,
+				6D98CF65C5A6433B8AB9228C /* Cardo-Regular.ttf */,
+				33AF8285E06148C989F44A1B /* Tinos-BoldItalic.ttf */,
+				DB616CE855E440F797C35A37 /* DancingScript-Regular.ttf */,
+				ADEEC560B4964972A94F2E83 /* Cousine-Regular.ttf */,
+				529239D3B39740139E426FD2 /* DancingScript-SemiBold.ttf */,
+			);
+			name = Resources;
+			path = "";
 			sourceTree = "<group>";
 		};
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
@@ -161,6 +215,21 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				F8E42514165230B188A81CE1 /* PrivacyInfo.xcprivacy in Resources */,
+				3A7B1D4D320B4980804B0DAC /* Tinos-Regular.ttf in Resources */,
+				6A6E28D9CBD44E21AE9B8621 /* Cousine-BoldItalic.ttf in Resources */,
+				2143856AD7524DD59D66756F /* Tinos-Italic.ttf in Resources */,
+				4DD3D799E76E4583B078DD3D /* Cousine-Bold.ttf in Resources */,
+				8B3D34E2522A464397DF768D /* Cardo-Italic.ttf in Resources */,
+				03A9AF2F15CF4B06A6E34830 /* DancingScript-Bold.ttf in Resources */,
+				3602220C4086452E9B7783CF /* Cardo-Bold.ttf in Resources */,
+				C3BC9314D4A24D4398F6CA6A /* Cousine-Italic.ttf in Resources */,
+				95A4457C000345BB91774A58 /* Tinos-Bold.ttf in Resources */,
+				45F59E57920B4E3597F951F0 /* DancingScript-Medium.ttf in Resources */,
+				0D6CA1FC9F984AA8B5E4AC77 /* Cardo-Regular.ttf in Resources */,
+				1D7CE069E3894817B6DB0410 /* Tinos-BoldItalic.ttf in Resources */,
+				5B1E51691A8E49A091949A40 /* DancingScript-Regular.ttf in Resources */,
+				20D8A8C5398F435FB650B0D6 /* Cousine-Regular.ttf in Resources */,
+				6B71DABCE8AD4106918CC7FF /* DancingScript-SemiBold.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

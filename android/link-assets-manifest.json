@@ -1,0 +1,65 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "assets/fonts/Cardo-Bold.ttf",
+      "sha1": "b29f4ca8d183e351b907b81204fbb5944dffe69a"
+    },
+    {
+      "path": "assets/fonts/Cardo-Italic.ttf",
+      "sha1": "33c66107adfa2de8bc8aaa259f6fcba23d7e7fe8"
+    },
+    {
+      "path": "assets/fonts/Cardo-Regular.ttf",
+      "sha1": "ac5eb3f9a3b9c1e5aaf8a5c9b871ed89634d289f"
+    },
+    {
+      "path": "assets/fonts/Cousine-Bold.ttf",
+      "sha1": "75564d4c6da1f0046718fe0f21bf72855351108e"
+    },
+    {
+      "path": "assets/fonts/Cousine-BoldItalic.ttf",
+      "sha1": "6ce54d6f22efe618cd902a8bcac26bda45fc20aa"
+    },
+    {
+      "path": "assets/fonts/Cousine-Italic.ttf",
+      "sha1": "3c219421af6a03f9d53be167fdcf2e6fde9d9160"
+    },
+    {
+      "path": "assets/fonts/Cousine-Regular.ttf",
+      "sha1": "d541492fee8181e488d148ff6aaf09af2778fb43"
+    },
+    {
+      "path": "assets/fonts/DancingScript-Bold.ttf",
+      "sha1": "40fe07b1708cf0cde98d01f7b196739ea3dab985"
+    },
+    {
+      "path": "assets/fonts/DancingScript-Medium.ttf",
+      "sha1": "df73d1ee6b9e3aa9eb6d692acbe12452daa01505"
+    },
+    {
+      "path": "assets/fonts/DancingScript-Regular.ttf",
+      "sha1": "a6c3a9b286cacd1efeef62942fff748cfd8b9722"
+    },
+    {
+      "path": "assets/fonts/DancingScript-SemiBold.ttf",
+      "sha1": "a58fa6bef624bedf2c4184ac52cf695eee74b27d"
+    },
+    {
+      "path": "assets/fonts/Tinos-Bold.ttf",
+      "sha1": "cc6b62dd5c5e11d2dd770e971698bf19fccbc756"
+    },
+    {
+      "path": "assets/fonts/Tinos-BoldItalic.ttf",
+      "sha1": "49f1bfe0efecaf151d98a23b6e9a3c708676d5e1"
+    },
+    {
+      "path": "assets/fonts/Tinos-Italic.ttf",
+      "sha1": "6fba1ed0f330dea0f8107a05272e02a5dbc58a09"
+    },
+    {
+      "path": "assets/fonts/Tinos-Regular.ttf",
+      "sha1": "425c16d5270227521adafdb7193d0439785d239f"
+    }
+  ]
+}

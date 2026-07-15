@@ -9,7 +9,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NoteCard from '../cards/NoteCard';
 import SettingsIcon from '../components/SettingsIcon';
@@ -35,9 +35,15 @@ import {
 } from '../constants';
 import { getRandomFrameId } from '../frames';
 import { NeuView, NeuPressable } from '../components/Neumorphic';
-import { NEU_ACCENT } from '../theme/neumorphic';
+import { NEU_ACCENT, NEU_BASE } from '../theme/neumorphic';
 import { darkenColor } from '../utils/color';
 import { resolveImageUrl } from '../utils/googleDriveImage';
+
+// Hand-lettered "Stickies" wordmark shown in the header in place of plain
+// text. Lives at the project root's /assets folder (sibling to /screens,
+// /components, etc.), not under /components — it's a static brand asset,
+// not a UI component.
+const STICKIES_HEADER_LOGO = require('../../assets/stickies_logo.png');
 
 const NOTES_KEY = '@sticky_notes_notes_v1';
 const TABS_KEY = '@sticky_notes_tabs_v1';
@@ -176,6 +182,12 @@ export const layoutNotesGrid = (
 };
 
 const MainScreen = () => {
+  // Read manually instead of relying solely on SafeAreaView's automatic top
+  // inset — the header below is deliberately rendered outside that inset
+  // (edges=['left','right','bottom'] on SafeAreaView) so its own background
+  // can extend all the way to the true top of the screen on iOS, with just
+  // its *content* pushed down by this value instead of the whole bar.
+  const insets = useSafeAreaInsets();
   const [notes, setNotes] = useState<Note[]>([]);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -775,9 +787,51 @@ const MainScreen = () => {
   }
 
   return (
-    <SafeAreaView style={[styles.container, settings.theme === 'dark' && { backgroundColor: '#1C1C1E' }]}>
-      <View style={[styles.header, styles.headerSpacing]}>
-        <Text style={styles.headerTitle}>Stickies</Text>
+    <View style={[{ flex: 1, backgroundColor: NEU_BASE }, settings.theme === 'dark' && { backgroundColor: '#1C1C1E' }]}>
+      {/* Tab wallpaper — painted on this outer View (which spans the true
+          device screen bounds, including the iOS status bar/notch area)
+          rather than as a child of SafeAreaView below. A SafeAreaView
+          positions its own children — including absolutely-positioned ones
+          — inset from the safe area, so the same layers used to stop short
+          of the very top of the screen. NEU_BASE (or the dark override)
+          set on this View is the default whole-screen background whenever
+          a tab has no custom wallpaper of its own. */}
+      {!!activeTab?.screenBackgroundColor && (
+        <View
+          style={[StyleSheet.absoluteFill, { backgroundColor: activeTab.screenBackgroundColor }]}
+          pointerEvents="none"
+        />
+      )}
+      {!!resolvedScreenBgImage && (
+        <>
+          <Image
+            source={{ uri: resolvedScreenBgImage }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+          />
+          {/* Scrim so a busy photo doesn't fight visually with the empty
+              gutters between cards — spans the full screen along with the
+              image itself. Tints toward white in light mode and black in
+              dark mode, matching whichever theme is active. */}
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: settings.theme === 'dark' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)' },
+            ]}
+            pointerEvents="none"
+          />
+        </>
+      )}
+
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: 'transparent' }}>
+      <View style={[styles.header, styles.headerSpacing, { paddingTop: insets.top + 15}]}>
+        <Image
+          source={STICKIES_HEADER_LOGO}
+          style={{ height: 55, width: 120, alignSelf: 'center' }}
+          resizeMode="contain"
+          accessibilityRole="image"
+          accessibilityLabel="Stickies"
+        />
         <NeuPressable
           radius={20}
           style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
@@ -881,29 +935,7 @@ const MainScreen = () => {
           )}
         </ScrollView>
 
-        <View style={[styles.mainContentArea, !!activeTab?.screenBackgroundColor && { backgroundColor: activeTab.screenBackgroundColor }]}>
-          {!!resolvedScreenBgImage && (
-            <>
-              <Image
-                source={{ uri: resolvedScreenBgImage }}
-                style={StyleSheet.absoluteFill}
-                resizeMode="cover"
-              />
-              {/* A light scrim so a busy photo doesn't fight visually with
-                  the empty gutters between cards — kept subtle since the
-                  cards themselves already sit on their own opaque
-                  background and don't rely on this for text contrast.
-                  Tints toward white in light mode and black in dark mode,
-                  matching whichever theme is active. */}
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  { backgroundColor: settings.theme === 'dark' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)' },
-                ]}
-                pointerEvents="none"
-              />
-            </>
-          )}
+        <View style={styles.mainContentArea}>
           {isListView ? (
             <FlatList
               key={`list-${settings.viewMode}`}
@@ -1179,6 +1211,7 @@ const MainScreen = () => {
         isDark={settings.theme === 'dark'}
       />
     </SafeAreaView>
+    </View>
   );
 };
 

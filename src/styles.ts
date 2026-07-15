@@ -1,7 +1,9 @@
 import { Dimensions, StyleSheet } from 'react-native';
 import { NEU_BASE, NEU_LIGHT_SHADOW, NEU_DARK_SHADOW, NEU_TEXT_PRIMARY, NEU_TEXT_SECONDARY, NEU_ACCENT, NEU_RADIUS } from './theme/neumorphic';
 
-const RAIL_WIDTH = 64;
+// Gutter around each 32px-wide tab pill was 16px per side (64px rail).
+// Reduced ~70% to ~5px per side, so the rail itself shrinks to 42px.
+const RAIL_WIDTH = 50;
 export const NOTE_COLUMNS = 2;
 const GRID_GAP = 12;
 export const CARD_SIZE = (Dimensions.get('window').width - RAIL_WIDTH - 32 - GRID_GAP * (NOTE_COLUMNS - 1)) / NOTE_COLUMNS;
@@ -22,7 +24,10 @@ export default StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: NEU_BASE,
+    // 50% transparent (50% opacity) version of NEU_BASE (#E6EBF2) — kept as
+    // an explicit rgba rather than NEU_BASE itself, since NEU_BASE is a
+    // solid hex with no alpha channel.
+    backgroundColor: 'rgba(230, 235, 242, 0.1)',
     borderBottomWidth: 0,
   },
   headerSpacing: {
@@ -76,7 +81,8 @@ export default StyleSheet.create({
   pillRail: {
     width: RAIL_WIDTH,
     flexGrow: 0,
-    backgroundColor: NEU_BASE,
+    // 50% transparent (50% opacity) version of NEU_BASE — see header above.
+    backgroundColor: 'rgba(230, 235, 242, 0.1)',
     borderRightWidth: 0,
   },
   pillRailContent: {

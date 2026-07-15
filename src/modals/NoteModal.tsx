@@ -406,9 +406,13 @@ const NoteModal = ({
     const idx = next.findIndex(i => i.id === id);
     if (idx >= 0) next.splice(idx + 1, 0, newItem); else next.push(newItem);
     onContentChange(next);
+    // Just focus the new item — RN's ScrollView already auto-scrolls just
+    // enough to bring a newly-focused TextInput into view above the
+    // keyboard. A forced scrollToEnd() here used to yank the view all the
+    // way to the bottom of the list even when the new item was created in
+    // the middle (e.g. pressing Enter on item #2 of a 20-item list).
     setTimeout(() => {
       inputRefs.current[newItem.id]?.focus();
-      scrollRef.current?.scrollToEnd({ animated: true });
     }, 60);
   };
 
@@ -602,15 +606,15 @@ const NoteModal = ({
                 >
                   <Text style={s.closeIconX}>✕</Text>
                 </TouchableOpacity>
-              ) : styleEditorMode ? null : (
+              ) : styleEditorMode ? null : showStyling ? (
+                <View style={{ width: 24 }} />
+              ) : (
                 <TouchableOpacity
-                  onPress={showStyling ? saveStyling : openStyling}
+                  onPress={openStyling}
                   activeOpacity={0.7}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Text style={[s.arrowIconV, showStyling && { color: '#007AFF' }]}>
-                    {showStyling ? '✓' : 'v'}
-                  </Text>
+                  <Text style={s.arrowIconV}>v</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -622,7 +626,7 @@ const NoteModal = ({
                 Swipe-to-action is applied at the screen level (see the
                 SwipeToAction wrapper around the whole modal below), so
                 swiping works anywhere on screen, not just over this area. */}
-            <View style={{ flex: 1 }} pointerEvents={showStyling ? 'none' : 'auto'}>
+            <View style={{ flex: 1, position: 'relative' }} pointerEvents={showStyling ? 'none' : 'auto'}>
                 {contentType === 'checklist' ? (
                 <ScrollView
                   ref={scrollRef}
@@ -690,13 +694,30 @@ const NoteModal = ({
                             onChangeText={text => {
                               // Any real edit cancels a pending "delete on next backspace" state.
                               backspacePendingRef.current[item.id] = false;
-                              // Some platforms don't emit onKeyPress for Enter in multiline inputs.
-                              // Detect newline characters in the text as a fallback and create a new item.
+                              // Multi-line text can land here two different ways:
+                              //   1. The user actually pressed Enter — onKeyPress below
+                              //      already set enterPressedRef.current = true just
+                              //      before this fires. Intent: split into a new item
+                              //      below and move focus there (some platforms don't
+                              //      emit onKeyPress for Enter in multiline inputs, so
+                              //      this text-based check is still needed as a
+                              //      fallback for that case).
+                              //   2. The user pasted multi-line text — no Enter
+                              //      keypress happened, so enterPressedRef.current is
+                              //      still false here. This used to be treated the
+                              //      same as #1 (strip newlines + addItemAfter + shift
+                              //      focus), which sent the cursor to a brand-new item
+                              //      at the bottom instead of just landing the pasted
+                              //      text in the item being edited.
                               if (selectedChecklistTextMode === 'wrap' && text.includes('\n')) {
                                 const sanitized = text.replace(/\n+/g, '');
                                 updateItem(item.id, sanitized);
-                                // Create the next item and focus it
-                                addItemAfter(item.id);
+                                if (enterPressedRef.current) {
+                                  // Real Enter press — create the next item and focus it.
+                                  addItemAfter(item.id);
+                                }
+                                // Paste with embedded line breaks — keep it all in the
+                                // current item; cursor stays right here.
                                 enterPressedRef.current = false;
                                 return;
                               }
@@ -722,8 +743,15 @@ const NoteModal = ({
                             onSubmitEditing={() => addItemAfter(item.id)}
                             onKeyPress={({ nativeEvent }) => {
                               if (nativeEvent.key === 'Enter' && selectedChecklistTextMode === 'wrap') {
+                                // Only flag that Enter (not a paste) caused the
+                                // upcoming newline — onChangeText below is the
+                                // single place that actually calls
+                                // addItemAfter(). Previously this also called
+                                // addItemAfter() directly, so both this handler
+                                // and onChangeText's enterPressedRef check fired
+                                // for the same keystroke, creating two blank
+                                // items instead of one.
                                 enterPressedRef.current = true;
-                                addItemAfter(item.id);
                                 return;
                               }
                               // Second consecutive Backspace while the item is empty deletes it.
@@ -774,9 +802,12 @@ const NoteModal = ({
               )}
               </View>
 
-            {/* Footer — hidden entirely in viewOnly mode; closing happens only via the ✕ */}
+            {/* Footer — hidden entirely in viewOnly mode; closing happens only via the ✕.
+                Locked from touches while the styling bar is open (same reasoning as the
+                content area above) so Cancel/Confirm can't be tapped through the dim
+                overlay — closing now only happens via Cancel/Done in the sheet itself. */}
             {!viewOnly && (
-              <>
+              <View pointerEvents={showStyling ? 'none' : 'auto'}>
                 <View style={s.dividerLine} />
                 {styleEditorMode ? (
                   <View style={s.actionRow}>
@@ -810,9 +841,10 @@ const NoteModal = ({
                     </TouchableOpacity>
                   </View>
                 )}
-              </>
+              </View>
             )}
 
+            {showStyling && <View pointerEvents="none" style={s.contentDimOverlay} />}
           </NeuView>
         </View>
 
@@ -824,10 +856,10 @@ const NoteModal = ({
               <View style={barStyles.barHeader}>
                 {!styleEditorMode ? (
                   <TouchableOpacity onPress={handleXPress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={barStyles.barHeaderClose}>✕</Text>
+                    <Text style={barStyles.barHeaderClose} numberOfLines={1}>Cancel</Text>
                   </TouchableOpacity>
                 ) : (
-                  <View style={{ width: 44 }} />
+                  <View style={{ width: 50 }} />
                 )}
                 <Text style={barStyles.barHeaderTitle}>Styling</Text>
                 {!styleEditorMode ? (
@@ -835,7 +867,7 @@ const NoteModal = ({
                     <Text style={barStyles.barHeaderDone} numberOfLines={1}>Done</Text>
                   </TouchableOpacity>
                 ) : (
-                  <View style={{ width: 44 }} />
+                  <View style={{ width: 50 }} />
                 )}
               </View>
               <View style={[barStyles.barHeaderDivider, { backgroundColor: `${p.darkShadow}55` }]} />
@@ -1218,6 +1250,9 @@ const NoteModal = ({
                   ));
                 })()}
               </View>
+              {barScrollX < 4 && (
+                <Text style={barStyles.swipeHint}>Swipe for Font · Size · Style · Margins · Spacing · Grid →</Text>
+              )}
               </NeuView>
           </View>
           </>
@@ -1315,6 +1350,11 @@ const s = StyleSheet.create({
   closeIconX: {
     fontSize: 18, fontWeight: '700', color: '#1C1C1E',
   },
+  contentDimOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
   dividerLine: { height: 1, backgroundColor: '#E5E5EA' },
   textInput: { flex: 1, padding: 0 },
   actionRow: {
@@ -1381,10 +1421,10 @@ const barStyles = StyleSheet.create({
     paddingBottom: 3,
   },
   barHeaderClose: {
-    fontSize: 11.5,
+    fontSize: 10.5,
     fontWeight: '700',
     color: NEU_DANGER,
-    width: 44,
+    width: 50,
   },
   barHeaderTitle: {
     fontSize: 11.5,
@@ -1395,7 +1435,7 @@ const barStyles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: NEU_ACCENT,
-    width: 44,
+    width: 50,
     textAlign: 'right',
   },
   barHeaderDivider: {
@@ -1407,7 +1447,7 @@ const barStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 5,
-    paddingVertical: 10,
+    paddingVertical: 6,
   },
   dot: {
     width: 5,
@@ -1418,6 +1458,12 @@ const barStyles = StyleSheet.create({
   dotActive: {
     width: 16,
     backgroundColor: NEU_ACCENT,
+  },
+  swipeHint: {
+    fontSize: 9.5,
+    color: '#8891A5',
+    textAlign: 'center',
+    paddingBottom: 8,
   },
   scrollContent: {
     paddingHorizontal: 13,

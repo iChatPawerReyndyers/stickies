@@ -14,13 +14,22 @@ export const FONTS = Platform.OS === 'ios'
       { name: 'Times New Roman', value: 'Times New Roman' },
     ]
   : [
-      // Android has no bundled Palatino/Times New Roman — both fall back to
-      // its generic 'serif' family, which is the closest available match.
+      // Android has no bundled Palatino/Times New Roman, and generic
+      // families used to be the fallback here — but 'serif' was used for
+      // BOTH Palatino and Times New Roman, so picking either one produced
+      // the exact same look. 'cursive' is also unreliable: several OEM
+      // skins (Samsung/Xiaomi/etc.) don't map it to an actual script font
+      // and silently fall back to the default. These four now point at
+      // real .ttf files bundled under /assets/fonts and linked via
+      // `npx react-native-asset` (see react-native.config.js at the
+      // project root), so every device renders them identically.
+      // The value must exactly match each font file's name minus its
+      // .ttf extension.
       { name: 'System', value: 'sans-serif' },
-      { name: 'Cursive', value: 'cursive' },
-      { name: 'Palatino', value: 'serif' },
-      { name: 'Courier', value: 'monospace' },
-      { name: 'Times New Roman', value: 'serif' },
+      { name: 'Cursive', value: 'DancingScript-Regular' },
+      { name: 'Palatino', value: 'Cardo-Regular' },
+      { name: 'Courier', value: 'Cousine-Regular' },
+      { name: 'Times New Roman', value: 'Tinos-Regular' },
     ];
 
 // Cycled through automatically whenever a new (non-built-in) tab is created,
