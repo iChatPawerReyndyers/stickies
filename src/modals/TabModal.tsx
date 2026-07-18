@@ -14,7 +14,7 @@ import {
 import { Tab } from '../types';
 import { getHexInputValue, normalizeHexColor } from '../utils/color';
 import { resolveImageUrl } from '../utils/googleDriveImage';
-import { NeuView, NeuPressable } from '../components/Neumorphic';
+import { NeuView } from '../components/Neumorphic';
 import NeuColorPickerModal from '../components/NeuColorPickerModal';
 import { getNeuPalette, NEU_ACCENT, NEU_DANGER, NEU_RADIUS } from '../theme/neumorphic';
 
@@ -129,14 +129,22 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
     const finalColor = normalizeHexColor(colorHex.trim()) || undefined;
     const finalTextColor = normalizeHexColor(textColorHex.trim()) || undefined;
     const finalScreenBackgroundColor = normalizeHexColor(screenBackgroundColorHex.trim()) || undefined;
+    // Only send the image URL when its own mode toggle is actually set to
+    // "Image" — otherwise a leftover value typed in earlier (before the
+    // user switched back to "Color") still gets saved alongside the new
+    // color, and since background image wins over color at render time
+    // (same convention as NoteCard/NoteModal), the color would silently
+    // never show up even though it saved correctly.
+    const finalBackgroundImageUrl = labelBgMode === 'image' ? (backgroundImageUrl.trim() || undefined) : undefined;
+    const finalScreenBackgroundImageUrl = tabBgMode === 'image' ? (screenBackgroundImageUrl.trim() || undefined) : undefined;
     onSave(
       editing?.id,
       trimmedName,
       finalColor,
       afterTabId,
       finalTextColor,
-      backgroundImageUrl.trim() || undefined,
-      screenBackgroundImageUrl.trim() || undefined,
+      finalBackgroundImageUrl,
+      finalScreenBackgroundImageUrl,
       finalScreenBackgroundColor,
     );
   };
@@ -183,7 +191,7 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
             keyboardShouldPersistTaps="handled"
           >
             <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>Name</Text>
+              <Text style={[modalStyles.itemLabel, { color: p.textSecondary }]}>Name</Text>
               <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm}>
                 <TextInput
                   style={[modalStyles.textInput, { color: p.textPrimary }]}
@@ -197,28 +205,33 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
             </View>
 
             <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>Label Background</Text>
+              <Text style={[modalStyles.itemLabel, { color: p.textSecondary }]}>Label Background</Text>
               <Text style={[modalStyles.itemHint, { color: p.textSecondary }]}>Shown behind the tab pill itself.</Text>
-              <NeuView isDark={isDark} inset radius={10} style={modalStyles.modeToggleTrack}>
-                {(['color', 'image'] as const).map(mode => (
-                  <NeuPressable
-                    key={mode}
-                    isDark={isDark}
-                    radius={8}
-                    backgroundColor={labelBgMode === mode ? p.base : undefined}
-                    style={modalStyles.modeToggleBtn}
-                    onPress={() => setLabelBgMode(mode)}
-                  >
-                    <Text style={[modalStyles.modeToggleText, { color: labelBgMode === mode ? p.textPrimary : p.textSecondary, fontWeight: labelBgMode === mode ? '700' : '400' }]}>
-                      {mode === 'color' ? 'Color' : 'Image'}
-                    </Text>
-                  </NeuPressable>
-                ))}
+              <NeuView isDark={isDark} inset radius={14} style={modalStyles.modeToggleTrack}>
+                {(['color', 'image'] as const).map(mode => {
+                  const active = labelBgMode === mode;
+                  return (
+                    <TouchableOpacity
+                      key={mode}
+                      activeOpacity={0.8}
+                      style={[
+                        modalStyles.modeToggleBtn,
+                        active && modalStyles.modeToggleBtnActive,
+                        active && { backgroundColor: NEU_ACCENT, shadowColor: p.darkShadow },
+                      ]}
+                      onPress={() => setLabelBgMode(mode)}
+                    >
+                      <Text style={[modalStyles.modeToggleText, { color: active ? '#FFFFFF' : p.textSecondary, fontWeight: active ? '700' : '500' }]}>
+                        {mode === 'color' ? 'Color' : 'Image'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </NeuView>
               {labelBgMode === 'color' ? (
                 <View style={[modalStyles.colorRow, modalStyles.modeFieldSpacing]}>
                   <ColorSwatchButton onPress={() => setColorPickerTarget('label')}>
-                    <NeuView isDark={isDark} radius={9} backgroundColor={previewColor} style={modalStyles.colorSwatch} />
+                    <NeuView isDark={isDark} radius={12} backgroundColor={previewColor} style={modalStyles.colorSwatch} />
                   </ColorSwatchButton>
                   <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
                     <TextInput
@@ -236,7 +249,7 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
               ) : (
                 <View style={[modalStyles.colorRow, modalStyles.modeFieldSpacing]}>
                   {!!resolvedPreviewImage && (
-                    <NeuView isDark={isDark} radius={9} style={modalStyles.colorSwatch}>
+                    <NeuView isDark={isDark} radius={12} style={modalStyles.colorSwatch}>
                       <Image source={{ uri: resolvedPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     </NeuView>
                   )}
@@ -256,10 +269,10 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
             </View>
 
             <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>Label Color</Text>
+              <Text style={[modalStyles.itemLabel, { color: p.textSecondary }]}>Label Color</Text>
               <View style={modalStyles.colorRow}>
                 <ColorSwatchButton onPress={() => setColorPickerTarget('text')}>
-                  <NeuView isDark={isDark} radius={9} backgroundColor={previewTextColor} style={modalStyles.colorSwatch} />
+                  <NeuView isDark={isDark} radius={12} backgroundColor={previewTextColor} style={modalStyles.colorSwatch} />
                 </ColorSwatchButton>
                 <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
                   <TextInput
@@ -277,28 +290,33 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
             </View>
 
             <View style={modalStyles.formGroup}>
-              <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>Tab Background</Text>
+              <Text style={[modalStyles.itemLabel, { color: p.textSecondary }]}>Tab Background</Text>
               <Text style={[modalStyles.itemHint, { color: p.textSecondary }]}>Shown as the app's wallpaper behind the notes grid whenever this tab is open.</Text>
-              <NeuView isDark={isDark} inset radius={10} style={modalStyles.modeToggleTrack}>
-                {(['color', 'image'] as const).map(mode => (
-                  <NeuPressable
-                    key={mode}
-                    isDark={isDark}
-                    radius={8}
-                    backgroundColor={tabBgMode === mode ? p.base : undefined}
-                    style={modalStyles.modeToggleBtn}
-                    onPress={() => setTabBgMode(mode)}
-                  >
-                    <Text style={[modalStyles.modeToggleText, { color: tabBgMode === mode ? p.textPrimary : p.textSecondary, fontWeight: tabBgMode === mode ? '700' : '400' }]}>
-                      {mode === 'color' ? 'Color' : 'Image'}
-                    </Text>
-                  </NeuPressable>
-                ))}
+              <NeuView isDark={isDark} inset radius={14} style={modalStyles.modeToggleTrack}>
+                {(['color', 'image'] as const).map(mode => {
+                  const active = tabBgMode === mode;
+                  return (
+                    <TouchableOpacity
+                      key={mode}
+                      activeOpacity={0.8}
+                      style={[
+                        modalStyles.modeToggleBtn,
+                        active && modalStyles.modeToggleBtnActive,
+                        active && { backgroundColor: NEU_ACCENT, shadowColor: p.darkShadow },
+                      ]}
+                      onPress={() => setTabBgMode(mode)}
+                    >
+                      <Text style={[modalStyles.modeToggleText, { color: active ? '#FFFFFF' : p.textSecondary, fontWeight: active ? '700' : '500' }]}>
+                        {mode === 'color' ? 'Color' : 'Image'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </NeuView>
               {tabBgMode === 'color' ? (
                 <View style={[modalStyles.colorRow, modalStyles.modeFieldSpacing]}>
                   <ColorSwatchButton onPress={() => setColorPickerTarget('screen')}>
-                    <NeuView isDark={isDark} radius={9} backgroundColor={previewScreenBackgroundColor} style={modalStyles.colorSwatch} />
+                    <NeuView isDark={isDark} radius={12} backgroundColor={previewScreenBackgroundColor} style={modalStyles.colorSwatch} />
                   </ColorSwatchButton>
                   <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={{ flex: 1 }}>
                     <TextInput
@@ -316,7 +334,7 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
               ) : (
                 <View style={[modalStyles.colorRow, modalStyles.modeFieldSpacing]}>
                   {!!resolvedScreenPreviewImage && (
-                    <NeuView isDark={isDark} radius={9} style={modalStyles.colorSwatch}>
+                    <NeuView isDark={isDark} radius={12} style={modalStyles.colorSwatch}>
                       <Image source={{ uri: resolvedScreenPreviewImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     </NeuView>
                   )}
@@ -337,7 +355,7 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
 
             {showAfterField && (
               <View style={modalStyles.formGroup}>
-                <Text style={[modalStyles.itemLabel, { color: p.textPrimary }]}>place after</Text>
+                <Text style={[modalStyles.itemLabel, { color: p.textSecondary }]}>place after</Text>
 
                 <NeuView isDark={isDark} inset={!isDropdownOpen} radius={NEU_RADIUS.sm} backgroundColor={isDropdownOpen ? p.base : undefined}>
                   <TouchableOpacity
@@ -387,9 +405,21 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
               button that sizes to its own content, but it means flex:1
               never reaches the actual flex-participating element, which is
               exactly what was collapsing this row to invisible. Same fix
-              StickieStyleNameModal.tsx already uses for its own Cancel/Save. */}
+              StickieStyleNameModal.tsx already uses for its own Cancel/Save.
+              Order: Delete Tab + Cancel share the top row, Save sits full-width
+              below — per request, so the primary action reads as one clear
+              full-width tap target instead of splitting the row three ways. */}
           <View style={modalStyles.footer}>
             <View style={modalStyles.actionButtonRow}>
+              {editing?.id && (
+                <TouchableOpacity
+                  style={[modalStyles.btn, modalStyles.btnInset, { backgroundColor: p.insetBase }]}
+                  onPress={() => onDelete(editing.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={modalStyles.deleteRowText}>Delete Tab</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[modalStyles.btn, modalStyles.btnInset, { backgroundColor: p.insetBase }]}
                 onPress={onCancel}
@@ -397,24 +427,15 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
               >
                 <Text style={modalStyles.btnCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[modalStyles.btn, modalStyles.btnRaised, { backgroundColor: NEU_ACCENT, shadowColor: p.darkShadow }]}
-                onPress={handleSave}
-                activeOpacity={0.8}
-              >
-                <Text style={modalStyles.btnSaveText}>{editing ? 'Save' : 'Create'}</Text>
-              </TouchableOpacity>
             </View>
 
-            {editing?.id && (
-              <TouchableOpacity
-                style={[modalStyles.deleteRow, modalStyles.btnInset, { backgroundColor: p.insetBase }]}
-                onPress={() => onDelete(editing.id)}
-                activeOpacity={0.8}
-              >
-                <Text style={modalStyles.deleteRowText}>Delete Tab</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[modalStyles.btnSaveFull, modalStyles.btnRaised, { backgroundColor: NEU_ACCENT, shadowColor: p.darkShadow }]}
+              onPress={handleSave}
+              activeOpacity={0.8}
+            >
+              <Text style={modalStyles.btnSaveText}>{editing ? 'Save' : 'Create'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -490,19 +511,21 @@ const modalStyles = StyleSheet.create({
     marginVertical: 8,
   },
   itemLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
   },
   itemHint: {
-    fontSize: 11,
-    marginBottom: 6,
-    lineHeight: 15,
+    fontSize: 10.5,
+    marginBottom: 9,
+    lineHeight: 14.5,
   },
   textInput: {
-    height: 42,
-    paddingHorizontal: 12,
-    fontSize: 15,
+    height: 38,
+    paddingHorizontal: 11,
+    fontSize: 13.5,
   },
   colorRow: {
     flexDirection: 'row',
@@ -510,8 +533,8 @@ const modalStyles = StyleSheet.create({
     gap: 10,
   },
   colorSwatch: {
-    width: 28,
-    height: 28,
+    width: 40,
+    height: 40,
     overflow: 'hidden',
   },
   colorInput: {
@@ -521,13 +544,25 @@ const modalStyles = StyleSheet.create({
     flexDirection: 'row',
     padding: 3,
   },
+  // Plain TouchableOpacity + manual shadow, not NeuPressable — same reason
+  // as the footer buttons below: NeuPressable only forwards `style` to its
+  // inner NeuView, never the outer Pressable, so this row's flex:1 buttons
+  // never actually got that sizing and collapsed onto each other.
   modeToggleBtn: {
     flex: 1,
+    height: 32,
     alignItems: 'center',
-    paddingVertical: 7,
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  modeToggleBtnActive: {
+    shadowOffset: { width: 1, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 3,
   },
   modeToggleText: {
-    fontSize: 12.5,
+    fontSize: 14.5,
   },
   modeFieldSpacing: {
     marginTop: 10,
@@ -568,7 +603,7 @@ const modalStyles = StyleSheet.create({
   btn: {
     flex: 1,
     height: 46,
-    borderRadius: NEU_RADIUS.sm,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 4,
@@ -601,13 +636,23 @@ const modalStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  // Same inset/danger treatment as the Cancel button above, per earlier request.
-  deleteRow: {
-    marginTop: 12,
-    marginHorizontal: 4,
-    paddingVertical: 13,
-    borderRadius: NEU_RADIUS.sm,
+  // Save's own full-width row below Delete Tab / Cancel — a standalone
+  // style rather than reusing `btn` + an override. `btn` carries flex:1,
+  // which is harmless inside the horizontal actionButtonRow (it only
+  // splits width there) but becomes a HEIGHT instruction once Save sits
+  // as a direct column child of `footer` instead — and since `footer` has
+  // no fixed height of its own, Yoga has no free space to grow into and
+  // was collapsing the button to 0 height, hiding it entirely. Skipping
+  // `flex` altogether here (rather than trying to override it back) removes
+  // any doubt about which rule wins — width fills via the column's default
+  // alignItems: 'stretch', height comes straight from the explicit value.
+  btnSaveFull: {
+    height: 46,
+    borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+    marginTop: 10,
   },
   deleteRowText: {
     color: NEU_DANGER,

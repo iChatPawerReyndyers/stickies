@@ -740,6 +740,7 @@ const MainScreen = () => {
       onEdit={() => (item.tabId === 'trash' ? openReadOnly(item) : editNote(item))}
       onLongPress={() => openViewOnlyModal(item)}
       hasScreenBackgroundImage={hasScreenBackgroundImage}
+      isDark={settings.theme === 'dark'}
     />
   );
 
@@ -845,6 +846,7 @@ const MainScreen = () => {
         />
         <NeuPressable
           radius={20}
+          isDark={settings.theme === 'dark'}
           style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
           onPress={() => setShowSettings(true)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -869,6 +871,7 @@ const MainScreen = () => {
               <View key={tab.id} style={styles.tabPillGroup}>
                 <NeuView
                   radius={16}
+                  isDark={settings.theme === 'dark'}
                   backgroundColor={isActive ? darkenColor(tab.color) : tab.color}
                   style={{ width: 32, height: 80, marginBottom: 4, overflow: 'hidden' }}
                 >
@@ -904,6 +907,7 @@ const MainScreen = () => {
 
           <NeuPressable
             radius={16}
+            isDark={settings.theme === 'dark'}
             style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}
             onPress={createNewTab}
           >
@@ -914,6 +918,7 @@ const MainScreen = () => {
             <View style={styles.tabPillDivider}>
               <NeuView
                 radius={16}
+                isDark={settings.theme === 'dark'}
                 backgroundColor={activeTabId === trashTab.id ? darkenColor(trashTab.color) : trashTab.color}
                 style={{ width: 32, height: 80, overflow: 'hidden' }}
               >
@@ -1000,6 +1005,7 @@ const MainScreen = () => {
                         cardWidth={width}
                         cardHeight={height}
                         hasScreenBackgroundImage={hasScreenBackgroundImage}
+                        isDark={settings.theme === 'dark'}
                       />
                     </View>
                   );
@@ -1017,6 +1023,7 @@ const MainScreen = () => {
         onSave={saveTab}
         onDelete={(id) => { if (id) deleteTab(id); }}
         onCancel={() => setShowTabModal(false)}
+        isDark={settings.theme === 'dark'}
       />
 
       <ReadOnlyModal
@@ -1062,6 +1069,7 @@ const MainScreen = () => {
           setSvgFrameId(value ? getRandomFrameId() : undefined);
         }}
         svgFrameId={svgFrameId}
+        onSvgFrameIdChange={setSvgFrameId}
         backgroundImageUrl={backgroundImageUrl}
         onBackgroundImageUrlChange={setBackgroundImageUrl}
         selectedMargins={selectedMargins}
@@ -1079,6 +1087,7 @@ const MainScreen = () => {
         selectedRowSpan={selectedRowSpan}
         onRowSpanChange={setSelectedRowSpan}
         maxColSpan={settings.gridColumns}
+        stickieStyles={settings.stickieStyles}
         restoreChecklistState={settings.restoreChecklistState}
         checklistSnapshot={checklistSnapshot}
         onChecklistSnapshotChange={setChecklistSnapshot}
@@ -1211,6 +1220,7 @@ const MainScreen = () => {
 
       <NeuPressable
         radius={28}
+        isDark={settings.theme === 'dark'}
         style={{ position: 'absolute', bottom: 32, right: 32, width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
         onPress={createNewNote}
       >

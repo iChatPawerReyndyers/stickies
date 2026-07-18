@@ -11,9 +11,12 @@ type NoteListRowProps = {
   // See NoteCard's prop of the same name — drops the neumorphic shadow when
   // the active tab has a screen wallpaper behind the list.
   hasScreenBackgroundImage?: boolean;
+  // Follows the app's Theme setting for the row's shadow tint — the row's
+  // own fill (note.color) stays fixed regardless, same as NoteCard.
+  isDark?: boolean;
 };
 
-const NoteListRow = ({ note, onEdit, onLongPress, hasScreenBackgroundImage = false }: NoteListRowProps) => {
+const NoteListRow = ({ note, onEdit, onLongPress, hasScreenBackgroundImage = false, isDark = false }: NoteListRowProps) => {
   const getSnippet = (): string => {
     if (note.contentType === 'text') {
       return (note.content as string).trim();
@@ -26,6 +29,7 @@ const NoteListRow = ({ note, onEdit, onLongPress, hasScreenBackgroundImage = fal
   return (
     <NeuPressable
       radius={NEU_RADIUS.md}
+      isDark={isDark}
       backgroundColor={note.color}
       noShadow={hasScreenBackgroundImage}
       style={{ flexDirection: 'row', alignItems: 'center', padding: 14, marginBottom: 10 }}

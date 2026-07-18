@@ -45,21 +45,29 @@ type BlurLayer = { shift: number; grow: number; opacity: number };
 const LIGHT_MODE_MULTIPLIERS = [0.3, 0.7, 1.2, 1.8, 2.6, 3.6];
 const LIGHT_MODE_OPACITIES = [0.32, 0.24, 0.18, 0.12, 0.07, 0.04];
 
-// Dark mode gets a wider, softer spread — approximating iOS's real
-// shadowRadius: distance * 1.3 blur, which reaches further out and fades
-// more gradually than the tighter light-mode layer stack. Paired with
-// leaving the card's own fill color unchanged (see androidRaisedBg below),
-// this is what gives a dark-mode card its separation from the page: a
-// directional glow, darker/heavier toward the bottom-right, not a
-// lighter-toned block.
-const DARK_MODE_GLOW_MULTIPLIERS = [0.5, 1.1, 1.9, 2.9, 4.1, 5.6];
-// Bumped up from the first pass — the dark (bottom-right) shadow needs to
-// read as clearly dark on its own, since the light layer below is now
-// deliberately kept faint rather than matching it.
-const DARK_MODE_GLOW_OPACITIES = [0.34, 0.27, 0.21, 0.15, 0.10, 0.06];
+// Dark mode gets a shorter layer stack than light mode, but each layer is
+// noticeably more opaque — a wide spread of faint layers reads as nothing
+// at typical card size once viewed on an actual device/emulator (each
+// individual layer was too close to invisible). Concentrating the opacity
+// in 4 tight layers right at the edge makes the shadow actually register
+// while keeping the total footprint equal to or smaller than before.
+//
+// Opacities bumped up further after checking on-device — the dark
+// (bottom-right) layer barely shows either way, since a dark shadow on an
+// already-dark page has very little contrast to work with. So this stack
+// is no longer trying to be "the dark one"; both directions need real
+// strength, and the light layer below is the one actually doing most of
+// the visible lifting.
+const DARK_MODE_GLOW_MULTIPLIERS = [0.3, 0.7, 1.15, 1.7];
+const DARK_MODE_GLOW_OPACITIES = [0.65, 0.48, 0.32, 0.18];
 
 const buildDarkBlurLayers = (distance: number, isDark: boolean): BlurLayer[] => {
-  const shift = distance * .3;
+  // A slightly larger offset in dark mode than light mode's 0.3 — gives the
+  // directional (bottom-right) shadow a clearer starting position before
+  // any blur/grow is even applied, which is what actually reads as "there
+  // is a shadow here" at a glance rather than needing the blur to do all
+  // the work.
+  const shift = distance * (isDark ? 0.45 : 0.3);
   const multipliers = isDark ? DARK_MODE_GLOW_MULTIPLIERS : LIGHT_MODE_MULTIPLIERS;
   const opacities = isDark ? DARK_MODE_GLOW_OPACITIES : LIGHT_MODE_OPACITIES;
   return multipliers.map((m, i) => ({
@@ -70,21 +78,25 @@ const buildDarkBlurLayers = (distance: number, isDark: boolean): BlurLayer[] => 
 };
 
 const buildLightBlurLayers = (distance: number, isDark: boolean): BlurLayer[] => {
-  const shift = distance * 0.3;
+  const shift = distance * (isDark ? 0.45 : 0.3);
   const multipliers = isDark ? DARK_MODE_GLOW_MULTIPLIERS : LIGHT_MODE_MULTIPLIERS;
-  // Deliberately faint in dark mode — previously this matched (and briefly
-  // even exceeded) the dark layer's opacity, which made the top-left
-  // "highlight" and bottom-right "shadow" blend into one even halo all the
-  // way around the card instead of a directional drop-shadow. Cut to about
-  // a third of the dark layer's strength so the bottom/right side reads as
-  // the dominant, clearly-dark edge, with just a faint lift on top/left.
+  // Previously deliberately kept faint (35% of the dark layer) on the
+  // assumption dark mode should mirror light mode's dark-side-dominant
+  // look. In practice, on a dark page the highlight side is the one with
+  // real contrast to show — a dark shadow on an already-dark background
+  // barely registers no matter how opaque it is. So this is now the
+  // stronger of the two sides (paired with the brighter
+  // NEU_LIGHT_SHADOW_DARK_MODE token), while the dark layer above still
+  // adds a bit of directional weight toward the bottom-right without
+  // needing to carry the whole effect on its own.
   const opacities = isDark
-    ? DARK_MODE_GLOW_OPACITIES.map(o => Math.round(o * 0.35 * 100) / 100)
+    ? DARK_MODE_GLOW_OPACITIES.map(o => Math.round(o * 0.8 * 100) / 100)
     : LIGHT_MODE_OPACITIES;
   return multipliers.map((m, i) => ({
     shift,
     grow: distance * m,
     opacity: opacities[i],
+
   }));
 };
 
@@ -168,7 +180,7 @@ export const NeuView: React.FC<NeuViewProps> = ({
   // comment above) so it instead gets stacked fake-blur layers in each
   // direction. Either way the real content View paints last/on top.
   return (
-    <View style={{ position: 'relative' }}>
+    <View style={{ position: 'relative' }} collapsable={false}>
       {!noShadow && (IS_ANDROID ? (
         <>
           {buildDarkBlurLayers(distance, isDark).map((l, i) => (
@@ -253,6 +265,12 @@ type NeuPressableProps = PressableProps & {
   isDark?: boolean;
   backgroundColor?: string;
   noShadow?: boolean;
+  // Shadow size, forwarded to the inner NeuView. Previously NeuPressable
+  // had no way to pass this through at all, so a small settings-row button
+  // and a full-size note card both got the exact same shadow reach — fine
+  // for the small stuff, but proportionally weak on anything large. Larger
+  // surfaces (see cards/NoteCard.tsx) should pass a bigger value here.
+  distance?: number;
 };
 
 // Raised by default; flips to the inset "pressed" look while held down —
@@ -264,6 +282,7 @@ export const NeuPressable: React.FC<NeuPressableProps> = ({
   isDark = false,
   backgroundColor,
   noShadow = false,
+  distance,
   onPressIn,
   onPressOut,
   ...rest
@@ -275,7 +294,7 @@ export const NeuPressable: React.FC<NeuPressableProps> = ({
       onPressOut={(e) => { setPressed(false); onPressOut?.(e); }}
       {...rest}
     >
-      <NeuView radius={radius} inset={pressed} isDark={isDark} backgroundColor={pressed ? undefined : backgroundColor} noShadow={noShadow} style={style}>
+      <NeuView radius={radius} inset={pressed} isDark={isDark} backgroundColor={pressed ? undefined : backgroundColor} noShadow={noShadow} distance={distance} style={style}>
         {children}
       </NeuView>
     </Pressable>

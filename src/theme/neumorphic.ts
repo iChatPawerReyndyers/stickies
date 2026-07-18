@@ -10,18 +10,19 @@ export const NEU_BASE = '#E6EBF2';        // shared base surface color (bg, card
 // old value was close enough to NEU_INSET_BASE_DARK/card tones that raised
 // surfaces had very little room to visually lift off the page, especially
 // on Android where there's no real colored shadow to help separate them.
-export const NEU_BASE_DARK = '#14151a';   // dark-mode base surface color
+export const NEU_BASE_DARK = '#22242C';   // dark-mode base surface color
 
 export const NEU_LIGHT_SHADOW = '#FFFFFF';
 export const NEU_DARK_SHADOW = '#A6B0C3';
 
-// Brightened from #454A56 — this is Android's "light" shadow layer (see
-// buildLightBlurLayers in Neumorphic.tsx) as well as iOS's shadowColor for
-// the light-side shadow View. The old tone was too close in luminance to
-// the card itself to register as a highlight, which is what made Android's
-// dual-shadow read as a single flat dark smudge instead of a soft lifted
-// edge (iOS's real shadowOpacity/shadowRadius masked the same issue).
-export const NEU_LIGHT_SHADOW_DARK_MODE = '#565B68';
+// Brightened again from #565B68 — that value was a step in the right
+// direction but still too close in luminance to NEU_BASE_DARK to read
+// clearly as a highlight once actually viewed on device. On a dark page,
+// THIS is the color that has to carry most of the visible "lifted" look —
+// a dark shadow on an already-dark page has very little contrast to show,
+// so the highlight side needs to be unambiguously lighter than the page,
+// not just marginally so.
+export const NEU_LIGHT_SHADOW_DARK_MODE = '#6E7383';
 export const NEU_DARK_SHADOW_DARK_MODE = '#0E0F12';
 
 // Base color for carved-in/inset surfaces (text inputs, unselected radio
@@ -51,6 +52,11 @@ export const NEU_NOTE_COLORS = [
   '#FBC4CE', // pastel coral pink (was #FF6B81)
   '#B4EAD7', // pastel mint    (was #34D399)
   '#D6CCF9', // pastel violet  (was #A78BFA)
+  '#FDE7B3', // pastel yellow  (was #FFD166)
+  '#B2E8E0', // pastel turquoise
+  '#F7C6DE', // pastel rose
+  '#E3D1FB', // pastel lilac
+  '#EAD9C2', // pastel sand
 ];
 
 export const NEU_RADIUS = {

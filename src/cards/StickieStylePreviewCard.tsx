@@ -7,8 +7,14 @@
 
 import React from 'react';
 import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
-import { ChecklistItem, ContentType } from '../types';
-import { StickieStyle } from '../types/stickieStyle';
+import {
+  ChecklistItem,
+  ContentType,
+  DEFAULT_MARGINS,
+  DEFAULT_ITEM_SPACING,
+  DEFAULT_LINE_SPACING,
+} from '../types';
+import { StickieStyle } from '../utils/stickieStyle';
 import { FRAME_COMPONENTS } from '../frames';
 import { resolveImageUrl } from '../utils/googleDriveImage';
 import { resolveFontStyle } from '../utils/fontResolver';
@@ -32,12 +38,20 @@ const StickieStylePreviewCard: React.FC<StickieStylePreviewCardProps> = ({
   width = DEFAULT_WIDTH,
   height = DEFAULT_HEIGHT,
 }) => {
+  // margins/itemSpacing/lineSpacing are optional on StickieStyle (a style
+  // saved before these existed, or one built minimally by hand, might not
+  // set them) — same fallback-to-default pattern NoteModal.tsx's own
+  // applyStickieStyle already uses.
+  const margins = style.margins || DEFAULT_MARGINS;
+  const itemSpacing = style.itemSpacing || DEFAULT_ITEM_SPACING;
+  const lineSpacing = style.lineSpacing ?? DEFAULT_LINE_SPACING;
+
   const getTextStyle = (): any => {
     return {
-      ...resolveFontStyle(style.font, style.textStyle),
+      ...resolveFontStyle(style.fontFamily, style.textStyle),
       color: style.textColor,
       fontSize: style.fontSize,
-      lineHeight: style.fontSize + style.lineSpacing,
+      lineHeight: style.fontSize + lineSpacing,
     };
   };
 
@@ -75,10 +89,10 @@ const StickieStylePreviewCard: React.FC<StickieStylePreviewCardProps> = ({
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingTop: 10 + style.margins.top,
-          paddingBottom: 10 + style.margins.bottom,
-          paddingLeft: 12 + style.margins.left,
-          paddingRight: 12 + style.margins.right,
+          paddingTop: 10 + margins.top,
+          paddingBottom: 10 + margins.bottom,
+          paddingLeft: 12 + margins.left,
+          paddingRight: 12 + margins.right,
         }}
         showsVerticalScrollIndicator={false}
         pointerEvents="none"
@@ -100,7 +114,7 @@ const StickieStylePreviewCard: React.FC<StickieStylePreviewCardProps> = ({
                 key={item.id}
                 style={[
                   styles.row,
-                  { marginTop: style.itemSpacing.top, marginBottom: style.itemSpacing.bottom },
+                  { marginTop: itemSpacing.top, marginBottom: itemSpacing.bottom },
                 ]}
               >
                 <View style={styles.checkboxSlot}>

@@ -207,7 +207,7 @@ const SettingsModal = ({
               <View style={{ flex: 1 }}>
                 <RowLabel label="Default note color" />
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                  {COLORS.map(color => (
+                  {COLORS.slice(0, 5).map(color => (
                     <TouchableOpacity key={color} onPress={() => onUpdateSettings({ defaultColor: color })}>
                       <NeuView
                         isDark={isDark}
@@ -429,10 +429,18 @@ const SettingsModal = ({
           </SectionCard>
 
           {/* Expandable manager: preview + dropdown + Add New / Edit Current.
-              See components/StickieStyleSection.tsx. */}
+              See components/StickieStyleSection.tsx.
+              stickieStyles/onStickieStylesChange route through
+              settings.stickieStyles — the same array NoteModal's styling
+              bar dropdown reads — so a style saved here is immediately
+              available when creating/editing a note. */}
           <View style={{ marginTop: 12 }}>
             <SectionCard>
-              <StickieStyleSection isDark={isDark} />
+              <StickieStyleSection
+                isDark={isDark}
+                stickieStyles={settings.stickieStyles}
+                onStickieStylesChange={(styles) => onUpdateSettings({ stickieStyles: styles })}
+              />
             </SectionCard>
           </View>
 

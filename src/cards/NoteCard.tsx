@@ -24,9 +24,13 @@ type NoteCardProps = {
   // The neumorphic shadow pair reads as visual noise on top of a busy photo,
   // so it's dropped entirely in that case rather than tuned per-photo.
   hasScreenBackgroundImage?: boolean;
+  // Follows the app's Theme setting so the card's shadow tint matches dark
+  // mode — the card's own fill (note.color) intentionally stays fixed
+  // either way, this only affects the neumorphic shadow around it.
+  isDark?: boolean;
 };
 
-const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize, cardWidth, cardHeight, hasScreenBackgroundImage = false }: NoteCardProps) => {
+const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize, cardWidth, cardHeight, hasScreenBackgroundImage = false, isDark = false }: NoteCardProps) => {
   const size = propCardSize ?? CARD_SIZE;
   const width = cardWidth ?? size;
   const height = cardHeight ?? size;
@@ -155,6 +159,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
   return (
     <NeuPressable
       radius={NEU_RADIUS.lg}
+      isDark={isDark}
       backgroundColor={(FrameComponent || resolvedImageUrl) ? 'transparent' : note.color}
       noShadow={hasScreenBackgroundImage}
       style={{ width, height, padding: 12, overflow: 'hidden' }}

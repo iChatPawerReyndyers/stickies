@@ -8,12 +8,32 @@
 // Tapping Add or Edit opens NoteModal in styleEditorMode (read-only content
 // + Styling bar shown together, Confirm/Cancel footer). Confirming opens
 // StickieStyleNameModal to name and persist the style.
+//
+// StickieStyles live in AppSettings.stickieStyles (owned by
+// SettingsModal/MainScreen) — the same array NoteModal's own "Apply style"
+// dropdown in the styling bar reads — so a style saved here is immediately
+// available when creating/editing a note.
+//
+// The StickieStyle objects built below (see handleSaveName) must match the
+// canonical shape declared in types.ts exactly: `fontFamily` (not `font`),
+// and a required `contentType` — types/stickieStyle.ts just re-exports
+// that same type now, it no longer declares its own separate one.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { ChecklistItem, ContentType, TextStyle, ChecklistSort, ChecklistTextMode, NoteMargins, ItemSpacing } from '../types';
-import { StickieStyle, makeDefaultStickieStyle } from '../types/stickieStyle';
-import { loadStickieStyles, upsertStickieStyle } from '../utils/stickieStyleStorage';
+import {
+  ChecklistItem,
+  ContentType,
+  TextStyle,
+  ChecklistSort,
+  ChecklistTextMode,
+  NoteMargins,
+  ItemSpacing,
+  DEFAULT_MARGINS,
+  DEFAULT_ITEM_SPACING,
+  DEFAULT_LINE_SPACING,
+} from '../types';
+import { StickieStyle, makeDefaultStickieStyle } from '../utils/stickieStyle';
 import StickieStylePreviewCard from '../cards/StickieStylePreviewCard';
 import StickieStyleDropdown from './StickieStyleDropdown';
 import StickieStyleNameModal from '../modals/StickieStyleNameModal';
@@ -32,13 +52,24 @@ const DEMO_CHECKLIST: ChecklistItem[] = [
 
 type StickieStyleSectionProps = {
   isDark?: boolean;
+  // Single source of truth for saved styles — the same array NoteModal's
+  // own styling-bar dropdown reads. Passed down from SettingsModal, which
+  // sources it from settings.stickieStyles.
+  stickieStyles: StickieStyle[];
+  // Called with the full replacement list any time a style is added or
+  // edited here. SettingsModal wires this straight to
+  // onUpdateSettings({ stickieStyles: ... }).
+  onStickieStylesChange: (styles: StickieStyle[]) => void;
 };
 
-const StickieStyleSection: React.FC<StickieStyleSectionProps> = ({ isDark = false }) => {
+const StickieStyleSection: React.FC<StickieStyleSectionProps> = ({
+  isDark = false,
+  stickieStyles,
+  onStickieStylesChange,
+}) => {
   const p = getNeuPalette(isDark);
 
   const [expanded, setExpanded] = useState(false);
-  const [styles, setStyles] = useState<StickieStyle[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Style-editor (NoteModal) state
@@ -48,6 +79,9 @@ const StickieStyleSection: React.FC<StickieStyleSectionProps> = ({ isDark = fals
 
   // Draft fields mirror exactly what NoteModal expects — same pattern your
   // main note editor already uses to drive NoteModal's individual props.
+  // (draftFont/draftContentType are just local variable names — they map
+  // onto StickieStyle's `fontFamily`/`contentType` fields when a style is
+  // actually built in handleSaveName below.)
   const [draftContentType, setDraftContentType] = useState<ContentType>('checklist');
   const [draftContent, setDraftContent] = useState<string | ChecklistItem[]>(DEMO_CHECKLIST);
   const [draftColor, setDraftColor] = useState('#FBDDA6');
@@ -64,50 +98,49 @@ const StickieStyleSection: React.FC<StickieStyleSectionProps> = ({ isDark = fals
   const [draftChecklistSort, setDraftChecklistSort] = useState<ChecklistSort>('as-is');
   const [draftChecklistTextMode, setDraftChecklistTextMode] = useState<ChecklistTextMode>('single');
 
+  // Default the dropdown selection to the first saved style whenever one
+  // exists and nothing is selected yet — e.g. right after the very first
+  // style is created, or once settings finish loading on app start.
   useEffect(() => {
-    (async () => {
-      const loaded = await loadStickieStyles();
-      setStyles(loaded);
-      if (loaded.length > 0) setSelectedId(loaded[0].id);
-    })();
-  }, []);
+    if (!selectedId && stickieStyles.length > 0) setSelectedId(stickieStyles[0].id);
+  }, [stickieStyles, selectedId]);
 
   const selectedStyle = useMemo(
-    () => styles.find(s => s.id === selectedId) || null,
-    [styles, selectedId]
+    () => stickieStyles.find(s => s.id === selectedId) || null,
+    [stickieStyles, selectedId]
   );
 
   const loadDraftFrom = (style: StickieStyle) => {
     setDraftColor(style.color);
     setDraftTextColor(style.textColor);
-    setDraftFont(style.font);
+    setDraftFont(style.fontFamily);
     setDraftFontSize(style.fontSize);
     setDraftTextStyle(style.textStyle);
     setDraftUseSvgBackground(style.useSvgBackground);
     setDraftSvgFrameId(style.svgFrameId);
     setDraftBackgroundImageUrl(style.backgroundImageUrl || '');
-    setDraftMargins(style.margins);
-    setDraftItemSpacing(style.itemSpacing);
-    setDraftLineSpacing(style.lineSpacing);
-    setDraftChecklistSort(style.checklistSort);
-    setDraftChecklistTextMode(style.checklistTextMode);
+    setDraftMargins(style.margins || DEFAULT_MARGINS);
+    setDraftItemSpacing(style.itemSpacing || DEFAULT_ITEM_SPACING);
+    setDraftLineSpacing(style.lineSpacing ?? DEFAULT_LINE_SPACING);
+    setDraftChecklistSort(style.checklistSort || 'as-is');
+    setDraftChecklistTextMode(style.checklistTextMode || 'single');
   };
 
   const resetDraftToDefault = () => {
     const d = makeDefaultStickieStyle();
     setDraftColor(d.color);
     setDraftTextColor(d.textColor);
-    setDraftFont(d.font);
+    setDraftFont(d.fontFamily);
     setDraftFontSize(d.fontSize);
     setDraftTextStyle(d.textStyle);
     setDraftUseSvgBackground(d.useSvgBackground);
     setDraftSvgFrameId(d.svgFrameId);
     setDraftBackgroundImageUrl(d.backgroundImageUrl || '');
-    setDraftMargins(d.margins);
-    setDraftItemSpacing(d.itemSpacing);
-    setDraftLineSpacing(d.lineSpacing);
-    setDraftChecklistSort(d.checklistSort);
-    setDraftChecklistTextMode(d.checklistTextMode);
+    setDraftMargins(d.margins || DEFAULT_MARGINS);
+    setDraftItemSpacing(d.itemSpacing || DEFAULT_ITEM_SPACING);
+    setDraftLineSpacing(d.lineSpacing ?? DEFAULT_LINE_SPACING);
+    setDraftChecklistSort(d.checklistSort || 'as-is');
+    setDraftChecklistTextMode(d.checklistTextMode || 'single');
   };
 
   const openAddEditor = () => {
@@ -139,7 +172,7 @@ const StickieStyleSection: React.FC<StickieStyleSectionProps> = ({ isDark = fals
     setNameModalVisible(true);
   };
 
-  const handleSaveName = async (name: string) => {
+  const handleSaveName = (name: string) => {
     const id = editorMode === 'edit' && selectedStyle ? selectedStyle.id : Date.now().toString();
     const style: StickieStyle = {
       id,
@@ -149,17 +182,20 @@ const StickieStyleSection: React.FC<StickieStyleSectionProps> = ({ isDark = fals
       svgFrameId: draftSvgFrameId,
       backgroundImageUrl: draftBackgroundImageUrl,
       textColor: draftTextColor,
-      font: draftFont,
+      fontFamily: draftFont,
       fontSize: draftFontSize,
       textStyle: draftTextStyle,
+      contentType: draftContentType,
       lineSpacing: draftLineSpacing,
       margins: draftMargins,
       itemSpacing: draftItemSpacing,
       checklistSort: draftChecklistSort,
       checklistTextMode: draftChecklistTextMode,
     };
-    const updated = await upsertStickieStyle(style);
-    setStyles(updated);
+    const updated = editorMode === 'edit' && selectedStyle
+      ? stickieStyles.map(s => (s.id === id ? style : s))
+      : [...stickieStyles, style];
+    onStickieStylesChange(updated);
     setSelectedId(id);
     setNameModalVisible(false);
     setEditorMode(null);
@@ -189,7 +225,7 @@ const StickieStyleSection: React.FC<StickieStyleSectionProps> = ({ isDark = fals
           </View>
 
           <StickieStyleDropdown
-            styles={styles}
+            styles={stickieStyles}
             selectedId={selectedId}
             onSelect={setSelectedId}
             isDark={isDark}

@@ -15,19 +15,25 @@ import {
   Keyboard,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, ChecklistSort, ChecklistTextMode, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN } from '../types';
+import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN, StickieStyle } from '../types';
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { FRAME_COMPONENTS } from '../frames';
 import SwipeToAction from '../components/SwipeToAction';
 import { resolveImageUrl } from '../utils/googleDriveImage';
-import { NeuView, NeuPressable } from '../components/Neumorphic';
+import { NeuView, NeuPressable, NeuToggle } from '../components/Neumorphic';
 import NeuColorPickerModal from '../components/NeuColorPickerModal';
 import CheckboxIcon from '../components/CheckboxIcon';
 import { resolveFontStyle } from '../utils/fontResolver';
 import { NEU_RADIUS, NEU_ACCENT, NEU_DANGER, getNeuPalette } from '../theme/neumorphic';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
+// The long-press "View Only" preview (viewOnly=true below) is a full read
+// view rather than the compact editor card, so it gets its own size — 93%
+// of screen width and 70% of screen height — instead of the fixed
+// MODAL_WIDTH/MODAL_HEIGHT the editor and style-editor modes use.
+const VIEW_ONLY_WIDTH = SCREEN_WIDTH * 0.93;
+const VIEW_ONLY_HEIGHT = SCREEN_HEIGHT * 0.7;
 const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.285);
 const MODAL_WIDTH = 320;
 const CARD_HORIZONTAL_PADDING = 24;
@@ -180,6 +186,19 @@ type NoteModalProps = {
   // already-saved note to act on (undefined disables swipe silently).
   onSwipeDelete?: () => void;
   onSwipeArchive?: () => void;
+  // Saved StickieStyles (settings.stickieStyles) the person can instantly
+  // apply to the note being created/edited via the new dropdown above Type.
+  // Only relevant to — and only rendered in — the normal create/edit flow:
+  // hidden entirely in viewOnly and styleEditorMode, where "the current
+  // styling" is the note/style itself being defined, not something to
+  // overwrite from a preset. Also hidden if empty (nothing to pick from).
+  stickieStyles?: StickieStyle[];
+  // Fired (after onUseSvgBackgroundChange) when a StickieStyle is applied.
+  // svgFrameId isn't covered by any of the onXChange props above — the
+  // caller derives a *random* frame whenever useSvgBackground is toggled on
+  // (see MainScreen) — so applying a saved style's own specific frame needs
+  // its own setter, called last so the specific id wins over the random one.
+  onSvgFrameIdChange?: (id: string | undefined) => void;
 };
 
 // ── Snapshot type ──────────────────────────────────────────────────────────────
@@ -219,9 +238,9 @@ const NoteModal = ({
   useSvgBackground, onUseSvgBackgroundChange,
   svgFrameId,
   backgroundImageUrl, onBackgroundImageUrlChange,
-  selectedMargins, onMarginsChange,
-  selectedItemSpacing, onItemSpacingChange,
-  selectedLineSpacing, onLineSpacingChange,
+  selectedMargins = DEFAULT_MARGINS, onMarginsChange,
+  selectedItemSpacing = DEFAULT_ITEM_SPACING, onItemSpacingChange,
+  selectedLineSpacing = DEFAULT_LINE_SPACING, onLineSpacingChange,
   selectedChecklistSort, onChecklistSortChange,
   selectedChecklistTextMode, onChecklistTextModeChange,
   selectedColSpan = DEFAULT_COL_SPAN,
@@ -241,8 +260,22 @@ const NoteModal = ({
   onConfirmStyle,
   onSwipeDelete,
   onSwipeArchive,
+  stickieStyles = [],
+  onSvgFrameIdChange,
 }: NoteModalProps) => {
   const [showStyling, setShowStyling] = useState(false);
+  const [showStyleDropdown, setShowStyleDropdown] = useState(false);
+  // Controls whether the StickieStyle picker section (leftmost in the
+  // styling bar) is shown at all. Starts false every time the modal opens
+  // (see the reset effect below) — the person opts in per note rather than
+  // this carrying over from whatever they last did.
+  const [useStickieStyleToggle, setUseStickieStyleToggle] = useState(false);
+  // Measured height of the "StickieStyle" label + trigger block (see
+  // onLayout below), used to anchor the floating dropdown list right under
+  // the trigger. A hardcoded pixel guess here previously left a large gap
+  // and pushed the list down toward the card's bottom edge — measuring the
+  // real height self-corrects for any font-scaling/layout differences.
+  const [stickieStyleTriggerHeight, setStickieStyleTriggerHeight] = useState(60);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [stylingSnapshot, setStylingSnapshot] = useState<StylingSnapshot | null>(null);
@@ -270,6 +303,37 @@ const NoteModal = ({
   // instance instead of two.
   const [colorPickerTarget, setColorPickerTarget] = useState<'background' | 'font' | null>(null);
 
+  // Free-typed hex value for the Background section's quick hex input —
+  // kept as its own local buffer (rather than deriving straight from
+  // selectedColor) so a partial, not-yet-valid string the user is still
+  // typing isn't stomped by the synced-from-prop effect below on every
+  // keystroke. Only committed to onColorChange once it's a full 6-digit hex.
+  const [bgHexInput, setBgHexInput] = useState(
+    (selectedColor || '').replace('#', '').toUpperCase().slice(0, 6)
+  );
+  useEffect(() => {
+    setBgHexInput((selectedColor || '').replace('#', '').toUpperCase().slice(0, 6));
+  }, [selectedColor]);
+  const handleBgHexChange = (text: string) => {
+    const sanitized = text.replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(0, 6);
+    setBgHexInput(sanitized);
+    if (sanitized.length === 6) onColorChange(`#${sanitized}`);
+  };
+
+  // Same pattern as bgHexInput above, for the Font Color section's own quick
+  // hex input.
+  const [fontHexInput, setFontHexInput] = useState(
+    (selectedTextColor || '').replace('#', '').toUpperCase().slice(0, 6)
+  );
+  useEffect(() => {
+    setFontHexInput((selectedTextColor || '').replace('#', '').toUpperCase().slice(0, 6));
+  }, [selectedTextColor]);
+  const handleFontHexChange = (text: string) => {
+    const sanitized = text.replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(0, 6);
+    setFontHexInput(sanitized);
+    if (sanitized.length === 6) onTextColorChange(`#${sanitized}`);
+  };
+
   // Mirrors the checklistSnapshot prop into a ref so the type-conversion
   // effect below can read/update it synchronously without needing to be a
   // dependency (it only needs the freshest value, not to re-run on change).
@@ -286,6 +350,13 @@ const NoteModal = ({
   const backspacePendingRef = useRef<{ [id: string]: boolean }>({});
 
   const p = getNeuPalette(isDark);
+
+  // Falls back to the first FONTS entry (System) whenever selectedFont is
+  // empty/unset or doesn't match any known font value — otherwise a note
+  // that's never had a font explicitly chosen would render with no chip
+  // highlighted in the Font section, and resolveFontStyle would be handed
+  // a value it can't resolve.
+  const effectiveFont = FONTS.some(f => f.value === selectedFont) ? selectedFont : FONTS[0].value;
 
   // Read-only note content is presented the same way as previewMode's
   // (non-editable) rendering — this just extends that same rendering path.
@@ -307,6 +378,8 @@ const NoteModal = ({
   useEffect(() => {
     if (!visible) {
       setShowStyling(false);
+      setShowStyleDropdown(false);
+      setUseStickieStyleToggle(false);
       setStylingSnapshot(null);
       setEditingItemId(null);
       editingSnapshotRef.current = null;
@@ -475,7 +548,7 @@ const NoteModal = ({
 
   const getTextStyle = (): any => {
     return {
-      ...resolveFontStyle(selectedFont, selectedTextStyle),
+      ...resolveFontStyle(effectiveFont, selectedTextStyle),
       color: selectedTextColor,
       fontSize: selectedFontSize,
       lineHeight: selectedFontSize + selectedLineSpacing,
@@ -544,6 +617,29 @@ const NoteModal = ({
     setShowStyling(false);
   };
 
+  // Applies a saved StickieStyle's fields onto the note currently being
+  // created/edited. Deliberately leaves contentType/content untouched — a
+  // saved style describes look, not the note's own text/checklist content,
+  // so applying one never disturbs what's already been typed.
+  const applyStickieStyle = (style: StickieStyle) => {
+    onColorChange(style.color);
+    onTextColorChange(style.textColor);
+    onFontChange(style.fontFamily);
+    onFontSizeChange(style.fontSize);
+    onTextStyleChange(style.textStyle);
+    onUseSvgBackgroundChange(style.useSvgBackground);
+    // Called after onUseSvgBackgroundChange above so this specific frame id
+    // wins over the random one MainScreen's own toggle handler assigns.
+    onSvgFrameIdChange?.(style.useSvgBackground ? style.svgFrameId : undefined);
+    onBackgroundImageUrlChange?.(style.backgroundImageUrl || '');
+    onMarginsChange(style.margins || DEFAULT_MARGINS);
+    onItemSpacingChange(style.itemSpacing || DEFAULT_ITEM_SPACING);
+    onLineSpacingChange(style.lineSpacing ?? DEFAULT_LINE_SPACING);
+    onChecklistSortChange(style.checklistSort || 'as-is');
+    onChecklistTextModeChange(style.checklistTextMode || 'single');
+    setShowStyleDropdown(false);
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -573,7 +669,7 @@ const NoteModal = ({
           <NeuView isDark={isDark}
             radius={28}
             backgroundColor={(FrameComponent || resolvedBgImageUrl) ? 'transparent' : selectedColor}
-            style={[s.card, { height: MODAL_HEIGHT }]}
+            style={[s.card, { height: MODAL_HEIGHT }, viewOnly && { width: VIEW_ONLY_WIDTH, height: VIEW_ONLY_HEIGHT }]}
             noShadow
           >
             {/* SVG frame background */}
@@ -899,22 +995,107 @@ const NoteModal = ({
                 onScroll={e => setBarScrollX(e.nativeEvent.contentOffset.x)}
                 scrollEventThrottle={32}
               >
+              {/* ── StickieStyle — leftmost section in the strip, so it's
+                  the first thing visible with no swiping needed. Only shown
+                  in the normal create/edit flow, and only when there's at
+                  least one saved style to pick from. The open list is
+                  absolutely positioned so it floats over the rest of the
+                  strip instead of growing this section's height (which a
+                  horizontal ScrollView can't accommodate — it only scrolls
+                  on its own axis), and scrolls on its own (capped height)
+                  once it's taller than that. ── */}
+              {!viewOnly && !styleEditorMode && stickieStyles.length > 0 && useStickieStyleToggle && (
+                <>
+                  <View style={[barStyles.section, { width: 176, position: 'relative', zIndex: 20 }]}>
+                    <View onLayout={e => setStickieStyleTriggerHeight(e.nativeEvent.layout.height)}>
+                      <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>StickieStyle</Text>
+                      <NeuView isDark={isDark} inset={!showStyleDropdown} radius={9} backgroundColor={showStyleDropdown ? p.base : undefined}>
+                        <TouchableOpacity
+                          style={barStyles.stickieStyleTrigger}
+                          onPress={() => setShowStyleDropdown(prev => !prev)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[barStyles.stickieStyleTriggerText, { color: p.textPrimary }]} numberOfLines={1}>
+                            Apply style
+                          </Text>
+                          <Text style={[barStyles.dropdownArrow, { color: p.textSecondary }]}>{showStyleDropdown ? '▲' : '▼'}</Text>
+                        </TouchableOpacity>
+                      </NeuView>
+                    </View>
+                    {showStyleDropdown && (
+                      <View style={[barStyles.stickieStyleOptionsFloatWrap, { top: stickieStyleTriggerHeight + 6 }]}>
+                        <NeuView isDark={isDark} radius={9} style={barStyles.stickieStyleOptionsFloat}>
+                          <ScrollView
+                            style={{ maxHeight: Math.max(80, STYLING_BAR_HEIGHT - (stickieStyleTriggerHeight + 6) - 40) }}
+                            nestedScrollEnabled
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                          >
+                            {stickieStyles.map(style => (
+                              <TouchableOpacity
+                                key={style.id}
+                                style={[barStyles.stickieStyleOptionRow, { borderColor: `${p.darkShadow}40` }]}
+                                onPress={() => applyStickieStyle(style)}
+                              >
+                                <View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: style.color }} />
+                                <Text style={[barStyles.stickieStyleOptionText, { color: p.textPrimary }]} numberOfLines={1}>
+                                  {style.name}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </NeuView>
+                      </View>
+                    )}
+                  </View>
+                  <View style={barStyles.vDivider} />
+                </>
+              )}
+
               {/* ── Content Type ── */}
-              <View style={[barStyles.section, { width: 116 }]}>
-                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Type</Text>
-                {(['text', 'checklist'] as ContentType[]).map(type => (
-                  <NeuPressable isDark={isDark}
-                    key={type}
-                    radius={9}
-                    backgroundColor={contentType === type ? NEU_ACCENT : p.base}
-                    style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
-                    onPress={() => onContentTypeChange(type)}
-                  >
-                    <Text style={[barStyles.miniBtnText, { fontSize: 9.5, color: p.textPrimary }, contentType === type && barStyles.miniBtnTextActive]}>
-                      {type === 'text' ? 'Text' : 'Checklist'}
+              <View style={[barStyles.section, { width: 176 }]}>
+                {/* Use StickieStyle toggle — only shown at all when there's
+                    at least one saved style to apply (same gate the
+                    StickieStyle section itself uses). Off by default every
+                    time the modal opens (see the reset effect above); when
+                    off, the StickieStyle section to the left stays hidden
+                    entirely rather than just being empty. */}
+                {!viewOnly && !styleEditorMode && stickieStyles.length > 0 && (
+                  <View style={barStyles.stickieToggleRow}>
+                    <Text style={[barStyles.stickieToggleLabel, { color: p.textSecondary }]} numberOfLines={1}>
+                      Use StickieStyle
                     </Text>
-                  </NeuPressable>
-                ))}
+                    <NeuToggle
+                      value={useStickieStyleToggle}
+                      onValueChange={setUseStickieStyleToggle}
+                      isDark={isDark}
+                    />
+                  </View>
+                )}
+                <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Type</Text>
+
+                {/* Stacked (Text above Checklist) rather than side by side —
+                    same chip size/style/colors as before, just reordered
+                    vertically instead of horizontally. */}
+                <View style={{ flexDirection: 'column', alignItems: 'flex-start', gap: MINI_GAP }}>
+                  {(['text', 'checklist'] as ContentType[]).map(type => (
+                    <NeuPressable isDark={isDark}
+                      key={type}
+                      radius={8}
+                      backgroundColor={contentType === type ? NEU_ACCENT : p.base}
+                      style={barStyles.fontChip}
+                      onPress={() => onContentTypeChange(type)}
+                    >
+                      <Text
+                        style={[barStyles.miniBtnText, { fontSize: 9.5, color: p.textPrimary }, contentType === type && barStyles.miniBtnTextActive]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                      >
+                        {type === 'text' ? 'Text' : 'Checklist'}
+                      </Text>
+                    </NeuPressable>
+                  ))}
+                </View>
               </View>
 
               <View style={barStyles.vDivider} />
@@ -922,24 +1103,14 @@ const NoteModal = ({
               {/* ── Background ── */}
               <View style={[barStyles.section, { width: 176 }]}>
                 <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Background</Text>
-                <TouchableOpacity
-                  style={[barStyles.svgToggle, !!resolvedBgImageUrl && barStyles.disabled]}
-                  onPress={() => onUseSvgBackgroundChange(!useSvgBackground)}
-                  disabled={!!resolvedBgImageUrl}
-                >
-                  <NeuView isDark={isDark} inset={!useSvgBackground} radius={5} backgroundColor={useSvgBackground ? NEU_ACCENT : p.insetBase} style={barStyles.miniCheck}>
-                    {useSvgBackground && <Text style={barStyles.miniCheckMark}>✓</Text>}
-                  </NeuView>
-                  <Text style={[barStyles.svgToggleText, { color: p.textPrimary }]}>SVG Frame</Text>
-                </TouchableOpacity>
                 <View
                   style={[barStyles.swatchGrid, (useSvgBackground || !!backgroundImageUrl) && barStyles.disabled]}
                   pointerEvents={(useSvgBackground || !!backgroundImageUrl) ? 'none' : 'auto'}
                 >
-                  {COLORS.map(color => (
+                  {COLORS.slice(0, 5).map(color => (
                     <TouchableOpacity key={color} onPress={() => onColorChange(color)}>
                       <NeuView isDark={isDark}
-                        radius={7}
+                        radius={8}
                         backgroundColor={color}
                         style={[
                           { width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' },
@@ -950,15 +1121,38 @@ const NoteModal = ({
                       </NeuView>
                     </TouchableOpacity>
                   ))}
-                  <TouchableOpacity onPress={() => setColorPickerTarget('background')}>
-                    <NeuView isDark={isDark}
-                      radius={7}
-                      backgroundColor={COLORS.includes(selectedColor) ? undefined : selectedColor}
-                      style={{ width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: p.textSecondary }}>+</Text>
+                </View>
+                <View
+                  style={[useSvgBackground && barStyles.disabled, { marginTop: 8 }]}
+                  pointerEvents={useSvgBackground ? 'none' : 'auto'}
+                >
+                  <Text style={[barStyles.imageUrlLabel, { color: p.textSecondary }]}>Hex Color</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: MINI_GAP }}>
+                    {/* Preview swatch of the current background color — also
+                        doubles as the trigger for the full color picker,
+                        taking over the job the removed "+" tile used to do
+                        above. */}
+                    <TouchableOpacity onPress={() => setColorPickerTarget('background')}>
+                      <NeuView isDark={isDark}
+                        radius={7}
+                        backgroundColor={selectedColor}
+                        style={{ width: 32, height: 32 }}
+                      />
+                    </TouchableOpacity>
+                    <NeuView isDark={isDark} inset radius={7} style={[barStyles.hexInputWrap, { flex: 1, width: undefined }]}>
+                      <Text style={[barStyles.hexHashText, { color: p.textSecondary }]}>#</Text>
+                      <TextInput
+                        style={[barStyles.hexInput, { color: p.textPrimary }]}
+                        placeholder="RRGGBB"
+                        placeholderTextColor="#9099AC"
+                        value={bgHexInput}
+                        onChangeText={handleBgHexChange}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                        maxLength={6}
+                      />
                     </NeuView>
-                  </TouchableOpacity>
+                  </View>
                 </View>
                 <View
                   style={[useSvgBackground && barStyles.disabled, { marginTop: 8 }]}
@@ -982,13 +1176,13 @@ const NoteModal = ({
               <View style={barStyles.vDivider} />
 
               {/* ── Font Color ── */}
-              <View style={[barStyles.section, { width: 165 }]}>
+              <View style={[barStyles.section, { width: 176 }]}>
                 <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Font Color</Text>
                 <View style={barStyles.swatchGrid}>
                   {TEXT_COLORS.map(color => (
                     <TouchableOpacity key={color} onPress={() => onTextColorChange(color)}>
                       <NeuView isDark={isDark}
-                        radius={7}
+                        radius={8}
                         backgroundColor={color}
                         style={[
                           { width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' },
@@ -999,70 +1193,99 @@ const NoteModal = ({
                       </NeuView>
                     </TouchableOpacity>
                   ))}
-                  <TouchableOpacity onPress={() => setColorPickerTarget('font')}>
-                    <NeuView isDark={isDark}
-                      radius={7}
-                      backgroundColor={TEXT_COLORS.includes(selectedTextColor) ? undefined : selectedTextColor}
-                      style={{ width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: p.textSecondary }}>+</Text>
+                </View>
+                <View style={{ marginTop: 8 }}>
+                  <Text style={[barStyles.imageUrlLabel, { color: p.textSecondary }]}>Hex Color</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: MINI_GAP }}>
+                    {/* Preview swatch of the current font color — also
+                        doubles as the trigger for the full color picker,
+                        taking over the job the removed "+" tile used to do
+                        above (same pattern as the Background section). */}
+                    <TouchableOpacity onPress={() => setColorPickerTarget('font')}>
+                      <NeuView isDark={isDark}
+                        radius={7}
+                        backgroundColor={selectedTextColor}
+                        style={{ width: 32, height: 32 }}
+                      />
+                    </TouchableOpacity>
+                    <NeuView isDark={isDark} inset radius={7} style={[barStyles.hexInputWrap, { flex: 1, width: undefined }]}>
+                      <Text style={[barStyles.hexHashText, { color: p.textSecondary }]}>#</Text>
+                      <TextInput
+                        style={[barStyles.hexInput, { color: p.textPrimary }]}
+                        placeholder="RRGGBB"
+                        placeholderTextColor="#9099AC"
+                        value={fontHexInput}
+                        onChangeText={handleFontHexChange}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                        maxLength={6}
+                      />
                     </NeuView>
-                  </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
               <View style={barStyles.vDivider} />
 
               {/* ── Font ── */}
-              <View style={[barStyles.section, { width: 174 }]}>
+              <View style={[barStyles.section, { width: 176 }]}>
                 <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Font</Text>
                 <View>
-                  {Array.from({ length: Math.ceil(FONTS.length / 2) }).map((_, rowIndex) => (
+                  {Array.from({ length: Math.ceil(FONTS.length / 2) }).map((_, rowIndex) => {
+                    const rowFonts = FONTS.slice(rowIndex * 2, rowIndex * 2 + 2);
+                    // A trailing row with just one font (e.g. Times New Roman,
+                    // the odd one out when FONTS.length is odd) spans the full
+                    // row width instead of sitting in a single 75px column —
+                    // gives it enough room to render at the same 10.5px as
+                    // every other font name, on one line, no auto-shrinking.
+                    const isSingle = rowFonts.length === 1;
+                    return (
                     <View key={rowIndex} style={{ flexDirection: 'row', gap: MINI_GAP, marginBottom: MINI_GAP }}>
-                      {FONTS.slice(rowIndex * 2, rowIndex * 2 + 2).map(font => (
+                      {rowFonts.map(font => (
                         <NeuPressable isDark={isDark}
                           key={font.value}
-                          radius={7}
-                          backgroundColor={selectedFont === font.value ? NEU_ACCENT : p.base}
-                          style={[barStyles.fontChip]}
+                          radius={8}
+                          backgroundColor={effectiveFont === font.value ? NEU_ACCENT : p.base}
+                          style={isSingle ? barStyles.fontChipFull : barStyles.fontChip}
                           onPress={() => onFontChange(font.value)}
                         >
-                          <Text style={[barStyles.fontChipText, { fontFamily: font.value, color: p.textPrimary }, selectedFont === font.value && barStyles.miniBtnTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+                          <Text style={[barStyles.fontChipText, { fontFamily: font.value, color: p.textPrimary }, effectiveFont === font.value && barStyles.miniBtnTextActive]} numberOfLines={1} adjustsFontSizeToFit>
                             {font.name}
                           </Text>
                         </NeuPressable>
                       ))}
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </View>
 
               <View style={barStyles.vDivider} />
 
-              {/* ── Font Size ── */}
-              <View style={[barStyles.section, { width: 112 }]}>
+              {/* ── Size / Style — merged section, Size's stepper sits above
+                  Style's chip grid, sharing one section/divider instead of
+                  two side by side (same pattern as the Order/Display merge
+                  above). ── */}
+              <View style={[barStyles.section, { width: 176 }]}>
                 <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Size</Text>
-                <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
-                  <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(6, selectedFontSize - 2))}>
+                <NeuView isDark={isDark} inset radius={9} style={[barStyles.stepper, { alignSelf: 'flex-start', marginBottom: 14 }]}>
+                  <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(6, selectedFontSize - 2))} hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}>
                     <Text style={barStyles.stepBtnText}>−</Text>
                   </TouchableOpacity>
                   <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedFontSize}</Text>
-                  <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.min(36, selectedFontSize + 2))}>
+                  <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.min(36, selectedFontSize + 2))} hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}>
                     <Text style={barStyles.stepBtnText}>+</Text>
                   </TouchableOpacity>
                 </NeuView>
-              </View>
 
-              <View style={barStyles.vDivider} />
-
-              {/* ── Text Style ── */}
-              <View style={[barStyles.section, { width: 155 }]}>
                 <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Style</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP }}>
-                  {(['normal', 'bold', 'italic', 'underline'] as TextStyle[]).map(style => (
+                <View>
+                  {Array.from({ length: 2 }).map((_, rowIndex) => (
+                    <View key={rowIndex} style={{ flexDirection: 'row', gap: MINI_GAP, marginBottom: MINI_GAP }}>
+                      {(['normal', 'bold', 'italic', 'underline'] as TextStyle[]).slice(rowIndex * 2, rowIndex * 2 + 2).map(style => (
                     <NeuPressable isDark={isDark}
                       key={style}
-                      radius={7}
+                      radius={8}
                       backgroundColor={selectedTextStyle === style ? NEU_ACCENT : p.base}
                       style={[barStyles.styleChip]}
                       onPress={() => onTextStyleChange(style)}
@@ -1081,6 +1304,8 @@ const NoteModal = ({
                         {style.charAt(0).toUpperCase() + style.slice(1)}
                       </Text>
                     </NeuPressable>
+                      ))}
+                    </View>
                   ))}
                 </View>
               </View>
@@ -1090,26 +1315,34 @@ const NoteModal = ({
               {/* ── Margins ── */}
               <View style={[barStyles.section, { width: 194 }]}>
                 <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Margins</Text>
-                {(['top', 'bottom', 'left', 'right'] as const).map(side => (
-                  <View key={side} style={barStyles.marginRow}>
+                {(['top', 'bottom', 'left', 'right'] as const).map(side => {
+                  // Top/Bottom ("above and below") get a finer 2-unit step —
+                  // the previous 4-unit step felt too coarse for those two.
+                  // Left/Right keep the original 4-unit step.
+                  const step = side === 'top' || side === 'bottom' ? 2 : 4;
+                  return (
+                  <View key={side} style={[barStyles.marginRow, { marginBottom: 3 }]}>
                     <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>{side.charAt(0).toUpperCase() + side.slice(1)}</Text>
-                    <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
+                    <NeuView isDark={isDark} inset radius={9} style={[barStyles.stepper, { marginTop: 3 }]}>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
-                        onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.max(0, selectedMargins[side] - 4) })}
+                        onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.max(0, selectedMargins[side] - step) })}
+                        hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                       >
                         <Text style={barStyles.stepBtnText}>−</Text>
                       </TouchableOpacity>
                       <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedMargins[side]}</Text>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
-                        onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.min(100, selectedMargins[side] + 4) })}
+                        onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.min(100, selectedMargins[side] + step) })}
+                        hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                       >
                         <Text style={barStyles.stepBtnText}>+</Text>
                       </TouchableOpacity>
                     </NeuView>
                   </View>
-                ))}
+                  );
+                })}
               </View>
 
               <View style={barStyles.vDivider} />
@@ -1128,6 +1361,7 @@ const NoteModal = ({
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.max(0, selectedItemSpacing[key] - 2) })}
+                          hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
@@ -1135,6 +1369,7 @@ const NoteModal = ({
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.min(48, selectedItemSpacing[key] + 2) })}
+                          hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                         >
                           <Text style={barStyles.stepBtnText}>+</Text>
                         </TouchableOpacity>
@@ -1146,6 +1381,7 @@ const NoteModal = ({
                     <TouchableOpacity
                       style={barStyles.stepBtn}
                       onPress={() => onLineSpacingChange(Math.max(0, selectedLineSpacing - 2))}
+                      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                     >
                       <Text style={barStyles.stepBtnText}>−</Text>
                     </TouchableOpacity>
@@ -1153,6 +1389,7 @@ const NoteModal = ({
                     <TouchableOpacity
                       style={barStyles.stepBtn}
                       onPress={() => onLineSpacingChange(Math.min(30, selectedLineSpacing + 2))}
+                      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                     >
                       <Text style={barStyles.stepBtnText}>+</Text>
                     </TouchableOpacity>
@@ -1160,49 +1397,76 @@ const NoteModal = ({
                 )}
               </View>
 
-              {/* ── Display / Order (checklist only) ── */}
+              {/* ── Order / Display (checklist only) — one merged section,
+                  Order's three chips on top, Display's Line/Wrap chips
+                  below their own sub-label, so both controls share a
+                  single section/divider instead of two side by side. ── */}
               {contentType === 'checklist' && (
                 <>
                   <View style={barStyles.vDivider} />
-                  <View style={[barStyles.section, { width: 116 }]}>
-                    <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Display</Text>
-                    {([
-                      { value: 'single', label: 'Line' },
-                      { value: 'wrap', label: 'Wrap' },
-                    ] as { value: ChecklistTextMode; label: string }[]).map(opt => (
-                      <NeuPressable isDark={isDark}
-                        key={opt.value}
-                        radius={9}
-                        backgroundColor={selectedChecklistTextMode === opt.value ? NEU_ACCENT : p.base}
-                        style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
-                        onPress={() => onChecklistTextModeChange(opt.value)}
-                      >
-                        <Text style={[barStyles.miniBtnText, { textAlign: 'center', color: p.textPrimary }, selectedChecklistTextMode === opt.value && barStyles.miniBtnTextActive]}>
-                          {opt.label}
-                        </Text>
-                      </NeuPressable>
-                    ))}
-                  </View>
-                  <View style={barStyles.vDivider} />
-                  <View style={[barStyles.section, { width: 131 }]}>
+                  <View style={[barStyles.section, { width: 176 }]}>
                     <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Order</Text>
-                    {([
-                      { value: 'as-is', label: 'As Is' },
-                      { value: 'unchecked-first', label: 'Pending First' },
-                      { value: 'alphabetical', label: 'A → Z' },
-                    ] as { value: ChecklistSort; label: string }[]).map(opt => (
-                      <NeuPressable isDark={isDark}
-                        key={opt.value}
-                        radius={9}
-                        backgroundColor={selectedChecklistSort === opt.value ? NEU_ACCENT : p.base}
-                        style={{ paddingVertical: 11, alignItems: 'center', marginBottom: 8 }}
-                        onPress={() => onChecklistSortChange(opt.value)}
-                      >
-                        <Text style={[barStyles.miniBtnText, { textAlign: 'center', color: p.textPrimary }, selectedChecklistSort === opt.value && barStyles.miniBtnTextActive]}>
-                          {opt.label}
-                        </Text>
-                      </NeuPressable>
-                    ))}
+                    {/* "As Is" and "A → Z" pair up on the top row; "Pending
+                        First" spans both columns alone on the row below —
+                        same lone-trailing-item treatment the Font section
+                        uses (see fontChipFull), just applied to the second
+                        row instead of the first. */}
+                    <View style={{ flexDirection: 'row', gap: MINI_GAP, marginBottom: MINI_GAP }}>
+                      {([
+                        { value: 'as-is', label: 'As Is' },
+                        { value: 'alphabetical', label: 'A → Z' },
+                      ] as { value: ChecklistSort; label: string }[]).map(opt => (
+                        <NeuPressable isDark={isDark}
+                          key={opt.value}
+                          radius={8}
+                          backgroundColor={selectedChecklistSort === opt.value ? NEU_ACCENT : p.base}
+                          style={barStyles.fontChip}
+                          onPress={() => onChecklistSortChange(opt.value)}
+                        >
+                          <Text
+                            style={[barStyles.miniBtnText, { textAlign: 'center', color: p.textPrimary }, selectedChecklistSort === opt.value && barStyles.miniBtnTextActive]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                          >
+                            {opt.label}
+                          </Text>
+                        </NeuPressable>
+                      ))}
+                    </View>
+                    <NeuPressable isDark={isDark}
+                      radius={8}
+                      backgroundColor={selectedChecklistSort === 'unchecked-first' ? NEU_ACCENT : p.base}
+                      style={barStyles.fontChipFull}
+                      onPress={() => onChecklistSortChange('unchecked-first')}
+                    >
+                      <Text style={[barStyles.miniBtnText, { textAlign: 'center', color: p.textPrimary }, selectedChecklistSort === 'unchecked-first' && barStyles.miniBtnTextActive]}>
+                        Pending First
+                      </Text>
+                    </NeuPressable>
+
+                    <Text style={[barStyles.sLabel, { color: p.textSecondary, marginTop: 14 }]}>Display</Text>
+                    <View style={{ flexDirection: 'row', gap: MINI_GAP }}>
+                      {([
+                        { value: 'single', label: 'Line' },
+                        { value: 'wrap', label: 'Wrap' },
+                      ] as { value: ChecklistTextMode; label: string }[]).map(opt => (
+                        <NeuPressable isDark={isDark}
+                          key={opt.value}
+                          radius={8}
+                          backgroundColor={selectedChecklistTextMode === opt.value ? NEU_ACCENT : p.base}
+                          style={barStyles.fontChip}
+                          onPress={() => onChecklistTextModeChange(opt.value)}
+                        >
+                          <Text
+                            style={[barStyles.miniBtnText, { textAlign: 'center', color: p.textPrimary }, selectedChecklistTextMode === opt.value && barStyles.miniBtnTextActive]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                          >
+                            {opt.label}
+                          </Text>
+                        </NeuPressable>
+                      ))}
+                    </View>
                   </View>
                 </>
               )}
@@ -1214,14 +1478,15 @@ const NoteModal = ({
               {!styleEditorMode && (
                 <>
                   <View style={barStyles.vDivider} />
-                  <View style={[barStyles.section, { width: 150 }]}>
+                  <View style={[barStyles.section, { width: 170 }]}>
                     <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Grid Size</Text>
                     <View style={barStyles.marginRow}>
-                      <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>Columns</Text>
+                      <Text style={[barStyles.marginLabel, { color: p.textPrimary, width: 62 }]} numberOfLines={1}>Columns</Text>
                       <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onColSpanChange(Math.max(1, selectedColSpan - 1))}
+                          hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
@@ -1229,17 +1494,19 @@ const NoteModal = ({
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onColSpanChange(Math.min(maxColSpan, selectedColSpan + 1))}
+                          hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                         >
                           <Text style={barStyles.stepBtnText}>+</Text>
                         </TouchableOpacity>
                       </NeuView>
                     </View>
                     <View style={barStyles.marginRow}>
-                      <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>Rows</Text>
+                      <Text style={[barStyles.marginLabel, { color: p.textPrimary, width: 62 }]} numberOfLines={1}>Rows</Text>
                       <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onRowSpanChange(Math.max(1, selectedRowSpan - 1))}
+                          hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
@@ -1247,6 +1514,7 @@ const NoteModal = ({
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onRowSpanChange(Math.min(MAX_NOTE_ROW_SPAN, selectedRowSpan + 1))}
+                          hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                         >
                           <Text style={barStyles.stepBtnText}>+</Text>
                         </TouchableOpacity>
@@ -1431,30 +1699,102 @@ const barStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingTop: 4,
-    paddingBottom: 3,
+    height: 40,
   },
   barHeaderClose: {
-    fontSize: 10.5,
+    fontSize: 15,
     fontWeight: '700',
     color: NEU_DANGER,
-    width: 50,
+    width: 60,
   },
   barHeaderTitle: {
-    fontSize: 11.5,
+    fontSize: 16,
     fontWeight: '700',
     color: '#8891A5',
   },
   barHeaderDone: {
-    fontSize: 11.5,
+    fontSize: 15,
     fontWeight: '700',
     color: NEU_ACCENT,
-    width: 50,
+    width: 60,
     textAlign: 'right',
   },
   barHeaderDivider: {
     height: 1,
     marginHorizontal: 18,
+  },
+  stickieStyleTrigger: {
+    height: 32,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  stickieStyleTriggerText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  dropdownArrow: {
+    fontSize: 10,
+  },
+  // NeuView's "raised" mode (see components/Neumorphic.tsx) only forwards
+  // the `style` prop to its *inner* content box — the outer box that
+  // actually participates in layout stays plain `position: 'relative'`
+  // with no absolute positioning of its own. Passing position:'absolute'
+  // straight to a NeuView's style (as an earlier version of this did)
+  // therefore doesn't take it out of normal flow at all: it still occupies
+  // space in-line, then gets *additionally* offset by `top` on top of that,
+  // compounding into a large, wrong gap. Splitting the two fixes it — this
+  // wrapper (a plain View) does the actual absolute positioning, and
+  // NeuView goes inside it doing nothing but its usual visual styling.
+  stickieStyleOptionsFloatWrap: {
+    position: 'absolute',
+    left: 0,
+    // Matches the section's own content width (176px section, 10px padding
+    // each side) — previously wider (220) for readability, but that spilled
+    // past the section's right edge into the divider and Type's space when
+    // open.
+    width: 156,
+    zIndex: 30,
+  },
+  // Floats over the rest of the horizontal strip instead of growing this
+  // section's height (which the strip, being a horizontal-only ScrollView,
+  // can't accommodate) — anchored just under the trigger, capped height
+  // with its own ScrollView (see the render code) so a long list of saved
+  // styles never grows the bar itself. Matches the section's own content
+  // width rather than exceeding it, so it doesn't spill into the divider
+  // and Type's space beside it.
+  stickieStyleOptionsFloat: {
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  stickieStyleOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  stickieStyleOptionText: {
+    fontSize: 11.5,
+    flex: 1,
+  },
+  stickieToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 11,
+  },
+  stickieToggleLabel: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    flexShrink: 1,
+    marginRight: 6,
   },
   dotsRow: {
     flexDirection: 'row',
@@ -1513,20 +1853,6 @@ const barStyles = StyleSheet.create({
   miniBtnActive: { backgroundColor: '#007AFF' },
   miniBtnText: { fontSize: 11.5, fontWeight: '500', color: '#3A4358' },
   miniBtnTextActive: { color: '#FFFFFF', fontWeight: '700' },
-  svgToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  miniCheck: {
-    width: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 5,
-  },
-  miniCheckMark: { fontSize: 9, fontWeight: '700', color: '#FFFFFF' },
-  svgToggleText: { fontSize: 11.5, color: '#3A4358', fontWeight: '500' },
   swatchGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: MINI_GAP },
   disabled: { opacity: 0.35 },
   imageUrlLabel: { fontSize: 11.5, fontWeight: '600', color: '#8891A5', marginBottom: 4 },
@@ -1536,6 +1862,26 @@ const barStyles = StyleSheet.create({
     fontSize: 11.5,
     color: '#3A4358',
     width: 156,
+  },
+  hexInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 32,
+    paddingHorizontal: 9,
+    width: 156,
+  },
+  hexHashText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    marginRight: 2,
+  },
+  hexInput: {
+    flex: 1,
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 1,
+    padding: 0,
+    height: 32,
   },
   swatch: {
     width: MINI_SWATCH,
@@ -1552,6 +1898,15 @@ const barStyles = StyleSheet.create({
     width: 75,
     alignItems: 'center',
   },
+  // Full row width (2 chips + the gap between them) — used for a lone
+  // trailing font chip (see the Font section render logic above) so it
+  // spans both columns instead of being squeezed into a single 75px one.
+  fontChipFull: {
+    paddingHorizontal: 7,
+    paddingVertical: 7,
+    width: 75 * 2 + MINI_GAP,
+    alignItems: 'center',
+  },
   fontChipText: { fontSize: 11.5, color: '#3A4358' },
   stepper: {
     flexDirection: 'row',
@@ -1559,13 +1914,13 @@ const barStyles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 7,
   },
-  stepBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  stepBtnText: { fontSize: 19, fontWeight: '400', color: '#F5A623' },
-  stepVal: { width: 32, textAlign: 'center', fontSize: 11.5, fontWeight: '600', color: '#3A4358' },
+  stepBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  stepBtnText: { fontSize: 18, fontWeight: '400', color: '#F5A623' },
+  stepVal: { width: 30, textAlign: 'center', fontSize: 11.5, fontWeight: '600', color: '#3A4358' },
   styleChip: {
     paddingHorizontal: 7,
     paddingVertical: 7,
-    width: 67,
+    width: 75,
     alignItems: 'center',
   },
   styleChipText: { fontSize: 11.5, color: '#3A4358' },

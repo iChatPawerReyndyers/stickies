@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, LayoutChangeEvent } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, LayoutChangeEvent, Dimensions } from 'react-native';
 import { Note, DEFAULT_LINE_SPACING } from '../types';
 import styles from '../styles';
 import SwipeToAction from '../components/SwipeToAction';
@@ -10,6 +10,15 @@ import { getNeuPalette } from '../theme/neumorphic';
 // the computed scroll-area height matches the actual space left over after
 // the header, not just the raw card height.
 const MODAL_CONTENT_BOTTOM_PADDING = 20;
+
+// Card is sized as a fraction of the screen rather than styles.modalContent's
+// own fixed width/height, so it scales consistently across device sizes.
+// Overridden locally (instead of editing styles.modalContent itself) the
+// same way NoteModal/SettingsModal already derive their own sizes from
+// Dimensions.get('window') rather than the shared stylesheet.
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const MODAL_WIDTH = SCREEN_WIDTH * 0.93;
+const MODAL_HEIGHT = SCREEN_HEIGHT * 0.7;
 
 type ReadOnlyModalProps = {
   visible: boolean;
@@ -90,8 +99,24 @@ const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore, 
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: p.base, shadowColor: p.darkShadow }]} onLayout={onContainerLayout}>
+      <View style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}>
+        <View
+          style={[
+            styles.modalContent,
+            {
+              backgroundColor: p.base,
+              shadowColor: p.darkShadow,
+              width: MODAL_WIDTH,
+              height: MODAL_HEIGHT,
+              borderRadius: 20,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              borderBottomLeftRadius: 20,
+              borderBottomRightRadius: 20,
+            },
+          ]}
+          onLayout={onContainerLayout}
+        >
           <View style={[styles.modalHeader, { borderBottomColor: `${p.darkShadow}30` }]} onLayout={onHeaderLayout}>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.modalCloseButton}>← Close</Text>

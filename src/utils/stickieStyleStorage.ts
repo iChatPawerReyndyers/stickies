@@ -7,7 +7,7 @@
 // exported function signatures, not on AsyncStorage itself.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StickieStyle } from '../types/stickieStyle';
+import { StickieStyle } from './stickieStyle';
 
 const STORAGE_KEY = 'stickie:styles';
 

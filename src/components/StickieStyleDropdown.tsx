@@ -6,7 +6,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { StickieStyle } from '../types/stickieStyle';
+import { StickieStyle } from '../utils/stickieStyle';
 import { NeuView, NeuPressable } from './Neumorphic';
 import { getNeuPalette, NEU_ACCENT, NEU_RADIUS } from '../theme/neumorphic';
 
