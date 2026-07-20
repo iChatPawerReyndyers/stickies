@@ -322,14 +322,45 @@ export const NeuToggle: React.FC<NeuToggleProps> = ({ value, onValueChange, isDa
           padding: 2,
           justifyContent: 'center',
           alignItems: value ? 'flex-end' : 'flex-start',
+          overflow: 'hidden',
         }}
       >
+        {/* Carved-in groove for the off state — same two-tone inset border
+            trick NeuView's own `inset` mode and CheckboxIcon's unchecked
+            state already use, so an off toggle reads as a real recessed
+            switch instead of a flat gray pill. Skipped when on — the solid
+            accent fill already reads as raised/active on its own.
+            Dark mode uses a uniform lighter ring (p.lightShadow on all four
+            sides) instead of the light-mode two-tone bevel: p.darkShadow in
+            dark mode (#0E0F12) is nearly the same near-black as the track
+            itself (#22252B), so the dark side of the bevel was invisible —
+            only p.lightShadow is deliberately brightened to read against a
+            near-black surface (see NEU_LIGHT_SHADOW_DARK_MODE in
+            theme/neumorphic.ts), so dark mode leans on that alone. */}
+        {!value && (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 0, left: 0, right: 0, bottom: 0,
+              borderRadius: 11,
+              borderWidth: 2,
+              borderTopColor: isDark ? p.lightShadow : p.darkShadow,
+              borderLeftColor: isDark ? p.lightShadow : p.darkShadow,
+              borderBottomColor: p.lightShadow,
+              borderRightColor: p.lightShadow,
+              opacity: isDark ? 0.85 : 0.55,
+            }}
+          />
+        )}
         <View
           style={{
             width: 18,
             height: 18,
             borderRadius: 9,
-            backgroundColor: p.base,
+            // Only the off-state knob gets the distinct dark-mode fill —
+            // the on-state knob stays exactly as it was (p.base), unchanged.
+            backgroundColor: isDark && !value ? '#484D5A' : p.base,
             shadowColor: '#000',
             shadowOffset: { width: 1, height: 1 },
             shadowOpacity: 0.3,

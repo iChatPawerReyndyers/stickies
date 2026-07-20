@@ -25,6 +25,13 @@ import NeuColorPickerModal from '../components/NeuColorPickerModal';
 import CheckboxIcon from '../components/CheckboxIcon';
 import { resolveFontStyle } from '../utils/fontResolver';
 import { NEU_RADIUS, NEU_ACCENT, NEU_DANGER, getNeuPalette } from '../theme/neumorphic';
+import { CheckIcon } from '../../assets/CheckIcon';
+import { XIcon } from '../../assets/XIcon';
+// NOTE: requires the '@react-native-clipboard/clipboard' package — React
+// Native's own Clipboard was removed from core. Add it to package.json
+// (`npm install @react-native-clipboard/clipboard`) and run a native
+// rebuild (pod install on iOS) since it includes native modules.
+import Clipboard from '@react-native-clipboard/clipboard';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
@@ -303,6 +310,16 @@ const NoteModal = ({
   // instance instead of two.
   const [colorPickerTarget, setColorPickerTarget] = useState<'background' | 'font' | null>(null);
 
+  // Color vs Image mode for the Background section — mirrors TabModal's
+  // own Label/Tab background toggles. Starts on whichever the note
+  // actually has, and re-syncs every time the modal opens (same per-open
+  // reset pattern the rest of this file already uses), so it never opens
+  // showing "Color" selected while an image is actually still active.
+  const [bgMode, setBgMode] = useState<'color' | 'image'>(backgroundImageUrl ? 'image' : 'color');
+  useEffect(() => {
+    if (visible) setBgMode(backgroundImageUrl ? 'image' : 'color');
+  }, [visible]);
+
   // Free-typed hex value for the Background section's quick hex input —
   // kept as its own local buffer (rather than deriving straight from
   // selectedColor) so a partial, not-yet-valid string the user is still
@@ -314,12 +331,6 @@ const NoteModal = ({
   useEffect(() => {
     setBgHexInput((selectedColor || '').replace('#', '').toUpperCase().slice(0, 6));
   }, [selectedColor]);
-  const handleBgHexChange = (text: string) => {
-    const sanitized = text.replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(0, 6);
-    setBgHexInput(sanitized);
-    if (sanitized.length === 6) onColorChange(`#${sanitized}`);
-  };
-
   // Same pattern as bgHexInput above, for the Font Color section's own quick
   // hex input.
   const [fontHexInput, setFontHexInput] = useState(
@@ -328,12 +339,6 @@ const NoteModal = ({
   useEffect(() => {
     setFontHexInput((selectedTextColor || '').replace('#', '').toUpperCase().slice(0, 6));
   }, [selectedTextColor]);
-  const handleFontHexChange = (text: string) => {
-    const sanitized = text.replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(0, 6);
-    setFontHexInput(sanitized);
-    if (sanitized.length === 6) onTextColorChange(`#${sanitized}`);
-  };
-
   // Mirrors the checklistSnapshot prop into a ref so the type-conversion
   // effect below can read/update it synchronously without needing to be a
   // dependency (it only needs the freshest value, not to re-run on change).
@@ -963,25 +968,25 @@ const NoteModal = ({
             <View style={barStyles.bottomSheet}>
               <NeuView isDark={isDark} radius={20} style={{ height: STYLING_BAR_HEIGHT, width: '100%' }}>
               <View style={barStyles.barHeader}>
-                {!styleEditorMode ? (
-                  <TouchableOpacity onPress={handleXPress} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={barStyles.barHeaderClose} numberOfLines={1}>Cancel</Text>
+                <Text style={[barStyles.barHeaderTitle, { color: p.textPrimary }]} numberOfLines={1}>Styling</Text>
+                <View style={[barStyles.headerActionCapsule, { backgroundColor: p.insetBase }]}>
+                  <TouchableOpacity
+                    onPress={!styleEditorMode ? handleXPress : onCancel}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    style={barStyles.headerActionBtn}
+                  >
+                    <XIcon size={15} color={NEU_DANGER} />
+                    {/* <Text style={barStyles.headerActionCancelText}>✕</Text> */}
                   </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity onPress={onCancel} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={barStyles.barHeaderClose} numberOfLines={1}>Cancel</Text>
+                  <TouchableOpacity
+                    onPress={!styleEditorMode ? saveStyling : (onConfirmStyle || onSave)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    style={[barStyles.headerActionBtn, barStyles.headerActionConfirmBtn]}
+                  >
+                    <CheckIcon size={15} color="#000000" />
+                    {/* <Text style={barStyles.headerActionConfirmText}>✓</Text> */}
                   </TouchableOpacity>
-                )}
-                <Text style={[barStyles.barHeaderTitle, { color: p.textSecondary }]}>Styling</Text>
-                {!styleEditorMode ? (
-                  <TouchableOpacity onPress={saveStyling} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={barStyles.barHeaderDone} numberOfLines={1}>Done</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity onPress={onConfirmStyle || onSave} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={barStyles.barHeaderDone} numberOfLines={1}>Save</Text>
-                  </TouchableOpacity>
-                )}
+                </View>
               </View>
               <View style={[barStyles.barHeaderDivider, { backgroundColor: `${p.darkShadow}55` }]} />
               <ScrollView
@@ -1104,72 +1109,102 @@ const NoteModal = ({
               <View style={[barStyles.section, { width: 176 }]}>
                 <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Background</Text>
                 <View
-                  style={[barStyles.swatchGrid, (useSvgBackground || !!backgroundImageUrl) && barStyles.disabled]}
-                  pointerEvents={(useSvgBackground || !!backgroundImageUrl) ? 'none' : 'auto'}
-                >
-                  {COLORS.slice(0, 5).map(color => (
-                    <TouchableOpacity key={color} onPress={() => onColorChange(color)}>
-                      <NeuView isDark={isDark}
-                        radius={8}
-                        backgroundColor={color}
-                        style={[
-                          { width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' },
-                          selectedColor === color && barStyles.swatchSel,
-                        ]}
-                      >
-                        {selectedColor === color && <Text style={barStyles.swatchCheck}>✓</Text>}
-                      </NeuView>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <View
-                  style={[useSvgBackground && barStyles.disabled, { marginTop: 8 }]}
+                  style={useSvgBackground ? barStyles.disabled : undefined}
                   pointerEvents={useSvgBackground ? 'none' : 'auto'}
                 >
-                  <Text style={[barStyles.imageUrlLabel, { color: p.textSecondary }]}>Hex Color</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: MINI_GAP }}>
-                    {/* Preview swatch of the current background color — also
-                        doubles as the trigger for the full color picker,
-                        taking over the job the removed "+" tile used to do
-                        above. */}
-                    <TouchableOpacity onPress={() => setColorPickerTarget('background')}>
-                      <NeuView isDark={isDark}
-                        radius={7}
-                        backgroundColor={selectedColor}
-                        style={{ width: 32, height: 32 }}
-                      />
-                    </TouchableOpacity>
-                    <NeuView isDark={isDark} inset radius={7} style={[barStyles.hexInputWrap, { flex: 1, width: undefined }]}>
-                      <Text style={[barStyles.hexHashText, { color: p.textSecondary }]}>#</Text>
-                      <TextInput
-                        style={[barStyles.hexInput, { color: p.textPrimary }]}
-                        placeholder="RRGGBB"
-                        placeholderTextColor="#9099AC"
-                        value={bgHexInput}
-                        onChangeText={handleBgHexChange}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                        maxLength={6}
-                      />
-                    </NeuView>
-                  </View>
-                </View>
-                <View
-                  style={[useSvgBackground && barStyles.disabled, { marginTop: 8 }]}
-                  pointerEvents={useSvgBackground ? 'none' : 'auto'}
-                >
-                  <Text style={[barStyles.imageUrlLabel, { color: p.textSecondary }]}>Image URL</Text>
-                  <NeuView isDark={isDark} inset radius={7}>
-                    <TextInput
-                      style={[barStyles.imageUrlInput, { color: p.textPrimary }]}
-                      placeholder="Google Drive link or image URL"
-                      placeholderTextColor="#9099AC"
-                      value={backgroundImageUrl || ''}
-                      onChangeText={text => onBackgroundImageUrlChange?.(text)}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
+                  {/* Color / Image mode toggle — same pattern as TabModal's
+                      own Label/Tab background toggles. Switching to Color
+                      clears any set backgroundImageUrl so the picked color
+                      actually takes effect: NoteCard/NoteModal both prefer
+                      backgroundImageUrl over the flat color whenever a URL
+                      is present, regardless of which mode is showing here —
+                      this toggle only controls which input is visible. */}
+                  <NeuView isDark={isDark} inset radius={9} style={barStyles.bgModeToggleTrack}>
+                    {(['color', 'image'] as const).map(mode => {
+                      const active = bgMode === mode;
+                      return (
+                        <TouchableOpacity
+                          key={mode}
+                          activeOpacity={0.8}
+                          style={[barStyles.bgModeToggleBtn, active && { backgroundColor: NEU_ACCENT }]}
+                          onPress={() => {
+                            if (mode === 'color') onBackgroundImageUrlChange?.('');
+                            setBgMode(mode);
+                          }}
+                        >
+                          <Text style={[barStyles.bgModeToggleText, { color: active ? '#FFFFFF' : p.textSecondary, fontWeight: active ? '700' : '500' }]}>
+                            {mode === 'color' ? 'Color' : 'Image'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </NeuView>
+
+                  {bgMode === 'color' ? (
+                    <>
+                      <View style={[barStyles.swatchGrid, { marginTop: 10 }]}>
+                        {COLORS.slice(0, 5).map(color => (
+                          <TouchableOpacity key={color} onPress={() => onColorChange(color)}>
+                            <NeuView isDark={isDark}
+                              radius={8}
+                              backgroundColor={color}
+                              style={[
+                                { width: MINI_SWATCH, height: MINI_SWATCH, alignItems: 'center', justifyContent: 'center' },
+                                selectedColor === color && barStyles.swatchSel,
+                              ]}
+                            >
+                              {selectedColor === color && <Text style={barStyles.swatchCheck}>✓</Text>}
+                            </NeuView>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={[barStyles.imageUrlLabel, { color: p.textSecondary }]}>Hex Color</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: MINI_GAP }}>
+                          {/* Preview swatch of the current background color —
+                              tap to open the full color picker. The hex
+                              field beside it is now display-only (see
+                              hexReadOnly) — a custom color is only entered
+                              through the picker's own sliders/hex field, not
+                              typed directly here. */}
+                          <TouchableOpacity onPress={() => setColorPickerTarget('background')}>
+                            <NeuView isDark={isDark}
+                              radius={7}
+                              backgroundColor={selectedColor}
+                              style={{ width: 32, height: 32 }}
+                            />
+                          </TouchableOpacity>
+                          <NeuView isDark={isDark} inset radius={7} style={[barStyles.hexInputWrap, barStyles.hexReadOnly, { flex: 1, width: undefined }]}>
+                            <Text style={[barStyles.hexInput, { color: p.textSecondary }]} numberOfLines={1} ellipsizeMode="clip">{`#${bgHexInput}`}</Text>
+                          </NeuView>
+                        </View>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={{ marginTop: 10 }}>
+                      {/* Only entry point for the image URL now — no manual
+                          typing. Reads whatever's on the clipboard (a
+                          Google Drive share link or a direct image URL, the
+                          same two formats the old text field accepted) and
+                          applies it as-is. */}
+                      <TouchableOpacity
+                        style={[barStyles.pasteButton, { backgroundColor: p.base, shadowColor: p.darkShadow }]}
+                        activeOpacity={0.8}
+                        onPress={async () => {
+                          try {
+                            const text = await Clipboard.getString();
+                            if (text && text.trim()) onBackgroundImageUrlChange?.(text.trim());
+                          } catch {
+                            // Clipboard read failed (permissions, empty
+                            // clipboard, etc.) — no-op, same as leaving the
+                            // image unset.
+                          }
+                        }}
+                      >
+                        <Text style={[barStyles.pasteButtonText, { color: p.textPrimary }]}>Paste from Clipboard</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -1197,10 +1232,11 @@ const NoteModal = ({
                 <View style={{ marginTop: 8 }}>
                   <Text style={[barStyles.imageUrlLabel, { color: p.textSecondary }]}>Hex Color</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: MINI_GAP }}>
-                    {/* Preview swatch of the current font color — also
-                        doubles as the trigger for the full color picker,
-                        taking over the job the removed "+" tile used to do
-                        above (same pattern as the Background section). */}
+                    {/* Preview swatch of the current font color — tap to
+                        open the full color picker. Font color has no
+                        Image mode (it's always a flat color), so unlike
+                        Background this section keeps no toggle — just the
+                        same read-only hex field treatment. */}
                     <TouchableOpacity onPress={() => setColorPickerTarget('font')}>
                       <NeuView isDark={isDark}
                         radius={7}
@@ -1208,18 +1244,8 @@ const NoteModal = ({
                         style={{ width: 32, height: 32 }}
                       />
                     </TouchableOpacity>
-                    <NeuView isDark={isDark} inset radius={7} style={[barStyles.hexInputWrap, { flex: 1, width: undefined }]}>
-                      <Text style={[barStyles.hexHashText, { color: p.textSecondary }]}>#</Text>
-                      <TextInput
-                        style={[barStyles.hexInput, { color: p.textPrimary }]}
-                        placeholder="RRGGBB"
-                        placeholderTextColor="#9099AC"
-                        value={fontHexInput}
-                        onChangeText={handleFontHexChange}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                        maxLength={6}
-                      />
+                    <NeuView isDark={isDark} inset radius={7} style={[barStyles.hexInputWrap, barStyles.hexReadOnly, { flex: 1, width: undefined }]}>
+                      <Text style={[barStyles.hexInput, { color: p.textSecondary }]} numberOfLines={1} ellipsizeMode="clip">{`#${fontHexInput}`}</Text>
                     </NeuView>
                   </View>
                 </View>
@@ -1698,26 +1724,43 @@ const barStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    paddingLeft: 18,
+    paddingRight: 4,
     height: 40,
-  },
-  barHeaderClose: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: NEU_DANGER,
-    width: 60,
   },
   barHeaderTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#8891A5',
   },
-  barHeaderDone: {
-    fontSize: 15,
+  // Grouped capsule holding the Cancel (✕) / Confirm (✓) icon buttons —
+  // replaces the old separate "Cancel"/"Done" text buttons flanking a
+  // centered title. p.insetBase (passed inline at the call site) gives it
+  // the same carved-in neutral tone as other inset surfaces in the app.
+  headerActionCapsule: {
+    flexDirection: 'row',
+    borderRadius: 16,
+    padding: 3,
+  },
+  headerActionBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerActionConfirmBtn: {
+    backgroundColor: NEU_ACCENT,
+  },
+  headerActionCancelText: {
+    fontSize: 14,
     fontWeight: '700',
-    color: NEU_ACCENT,
-    width: 60,
-    textAlign: 'right',
+    color: NEU_DANGER,
+  },
+  headerActionConfirmText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   barHeaderDivider: {
     height: 1,
@@ -1870,11 +1913,6 @@ const barStyles = StyleSheet.create({
     paddingHorizontal: 9,
     width: 156,
   },
-  hexHashText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    marginRight: 2,
-  },
   hexInput: {
     flex: 1,
     fontSize: 11.5,
@@ -1889,6 +1927,43 @@ const barStyles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Background section's Color/Image switch — same shape/sizing family as
+  // TabModal's modeToggleTrack/modeToggleBtn, just scaled down to fit this
+  // 176px-wide styling-bar section.
+  bgModeToggleTrack: {
+    flexDirection: 'row',
+    padding: 3,
+  },
+  bgModeToggleBtn: {
+    flex: 1,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  bgModeToggleText: {
+    fontSize: 12,
+  },
+  // Dims the hex value text to signal it's display-only — color/font-color
+  // hex codes are now set exclusively via the swatch → NeuColorPickerModal
+  // flow, never typed directly into this field.
+  hexReadOnly: {
+    opacity: 0.55,
+  },
+  pasteButton: {
+    height: 34,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pasteButtonText: {
+    fontSize: 11.5,
+    fontWeight: '700',
   },
   swatchSel: { borderWidth: 2, borderColor: '#3A4358' },
   swatchCheck: { fontSize: 10, fontWeight: '700', color: '#1C1C1E' },

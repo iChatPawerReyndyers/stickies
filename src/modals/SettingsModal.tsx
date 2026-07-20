@@ -11,6 +11,7 @@ import {
   SafeAreaView,
   Pressable,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { AppSettings, AppTheme, SortOrder, ViewMode, Note, Tab } from '../types';
 
@@ -170,7 +171,7 @@ const SettingsModal = ({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: p.base }}>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, marginTop: 24 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, marginTop: Platform.OS === 'android' ? 32 : 0 }}>
           <TouchableOpacity onPress={onClose}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: text }}>← Back</Text>
           </TouchableOpacity>

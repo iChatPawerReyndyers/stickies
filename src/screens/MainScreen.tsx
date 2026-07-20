@@ -1218,14 +1218,26 @@ const MainScreen = () => {
         }}
       />
 
-      <NeuPressable
-        radius={28}
-        isDark={settings.theme === 'dark'}
-        style={{ position: 'absolute', bottom: 32, right: 32, width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
-        onPress={createNewNote}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </NeuPressable>
+      {/* Positioning lives on this plain wrapper, not on NeuPressable itself —
+          NeuPressable only forwards `style` to its inner NeuView, never to
+          the outer Pressable that actually receives touches (see the same
+          note in TabModal.tsx/StickieStyleNameModal.tsx). Previously the
+          position:absolute/bottom/right/width/height were passed straight
+          into NeuPressable's `style`, which could visually render the "+"
+          in the bottom-right corner while the real touchable Pressable sat
+          in a different, zero/mismatched-size box — reliably tappable in
+          the emulator's layout rounding, but missed on physical devices. */}
+      <View style={{ position: 'absolute', bottom: 32, right: 32 }}>
+        <NeuPressable
+          radius={28}
+          isDark={settings.theme === 'dark'}
+          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+          onPress={createNewNote}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.fabText}>+</Text>
+        </NeuPressable>
+      </View>
 
       <Toast
         visible={toast.visible}

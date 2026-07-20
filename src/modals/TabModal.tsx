@@ -116,7 +116,7 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
 
   const isEditableCustomTab = !!editing && editing.id !== 'all' && editing.id !== 'general' && editing.id !== 'trash' && editing.id !== 'archived';
   const afterOptions = (editing ? isEditableCustomTab : true)
-    ? tabs.filter(tab => tab.id !== editing?.id && tab.id !== 'trash' && tab.id !== 'all')
+    ? tabs.filter(tab => tab.id !== editing?.id && tab.id !== 'trash' && tab.id !== 'all' && tab.id !== 'archived')
     : [];
   const showAfterField = editing ? (afterOptions.length > 0 && isEditableCustomTab) : afterOptions.length > 0;
 
