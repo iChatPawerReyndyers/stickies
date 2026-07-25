@@ -65,6 +65,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   sortOrder: 'manual',
   showDiscardConfirmation: true,
   restoreChecklistState: true,
+  defaultChecklistTextMode: 'single',
   stickieStyles: [],
   defaultStyleId: undefined,
   defaultTabId: 'all',
@@ -732,13 +733,19 @@ const MainScreen = () => {
   // `noShadow` prop.
   const hasScreenBackgroundImage = !!resolvedScreenBgImage;
 
+  // A note sitting in Archived or Trash is read-only end to end now — no
+  // swipe, no styling — so both tap and long-press open the same
+  // ReadOnlyModal (with its Restore / Delete forever buttons) instead of
+  // the full editor or the swipeable View Only popup.
+  const isReadOnlyTab = (note: Note) => note.tabId === 'trash' || note.tabId === 'archived';
+
   // List view: single-column compact rows, no swipe-to-delete on the row
   // itself (swipe still works from inside the note modals).
   const renderListItem = ({ item }: { item: Note }) => (
     <NoteListRow
       note={item}
-      onEdit={() => (item.tabId === 'trash' ? openReadOnly(item) : editNote(item))}
-      onLongPress={() => openViewOnlyModal(item)}
+      onEdit={() => (isReadOnlyTab(item) ? openReadOnly(item) : editNote(item))}
+      onLongPress={() => (isReadOnlyTab(item) ? openReadOnly(item) : openViewOnlyModal(item))}
       hasScreenBackgroundImage={hasScreenBackgroundImage}
       isDark={settings.theme === 'dark'}
     />
@@ -754,8 +761,19 @@ const MainScreen = () => {
   // never local to begin with — is treated as belonging to General here
   // too, as a defensive fallback on top of the load-time migration above,
   // so it's never simply invisible from every real tab.
+  //
+  // settings.allTabIncludedIds (set via Settings' "Tabs shown in All"
+  // section — see components/AllTabFilterSection.tsx) further narrows
+  // which tabs' notes actually populate "All": undefined means every tab
+  // is included (unchanged behavior for anyone who's never touched that
+  // setting), otherwise only notes whose resolved owner tab is in that
+  // list show up here.
   const rawBaseNotes = activeTabId === 'all'
-    ? notes.filter(n => n.tabId !== 'trash' && n.tabId !== 'archived')
+    ? notes.filter(n => {
+        if (n.tabId === 'trash' || n.tabId === 'archived') return false;
+        if (!settings.allTabIncludedIds) return true;
+        return settings.allTabIncludedIds.includes(ownerTabId(n, tabs));
+      })
     : notes.filter(n => ownerTabId(n, tabs) === activeTabId);
 
   const baseNotes = (() => {
@@ -999,9 +1017,9 @@ const MainScreen = () => {
                     >
                       <NoteCard
                         note={note}
-                        onEdit={() => (note.tabId === 'trash' ? openReadOnly(note) : editNote(note))}
+                        onEdit={() => (isReadOnlyTab(note) ? openReadOnly(note) : editNote(note))}
                         onDelete={() => deleteNote(note.id)}
-                        onLongPress={() => openViewOnlyModal(note)}
+                        onLongPress={() => (isReadOnlyTab(note) ? openReadOnly(note) : openViewOnlyModal(note))}
                         cardWidth={width}
                         cardHeight={height}
                         hasScreenBackgroundImage={hasScreenBackgroundImage}
@@ -1031,17 +1049,21 @@ const MainScreen = () => {
         note={readOnlyNote}
         isDark={settings.theme === 'dark'}
         onClose={() => { setShowReadOnlyModal(false); setReadOnlyNote(null); }}
-        onSwipeDelete={readOnlyNote ? () => {
+        onRestore={readOnlyNote ? () => {
+          const note = readOnlyNote;
+          setShowReadOnlyModal(false);
+          setReadOnlyNote(null);
+          // handleSwipeAction's 'right' branch already resolves correctly
+          // for both an Archived note (unarchive) and a Trash note
+          // (restore) — either way the note goes back to
+          // note.previousTabId, falling back to General.
+          handleSwipeAction(note, 'right');
+        } : undefined}
+        onDeleteForever={readOnlyNote && readOnlyNote.tabId === 'trash' ? () => {
           const note = readOnlyNote;
           setShowReadOnlyModal(false);
           setReadOnlyNote(null);
           handleSwipeAction(note, 'left');
-        } : undefined}
-        onSwipeRestore={readOnlyNote ? () => {
-          const note = readOnlyNote;
-          setShowReadOnlyModal(false);
-          setReadOnlyNote(null);
-          handleSwipeAction(note, 'right');
         } : undefined}
       />
 
@@ -1227,17 +1249,19 @@ const MainScreen = () => {
           in the bottom-right corner while the real touchable Pressable sat
           in a different, zero/mismatched-size box — reliably tappable in
           the emulator's layout rounding, but missed on physical devices. */}
-      <View style={{ position: 'absolute', bottom: 32, right: 32 }}>
-        <NeuPressable
-          radius={28}
-          isDark={settings.theme === 'dark'}
-          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
-          onPress={createNewNote}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.fabText}>+</Text>
-        </NeuPressable>
-      </View>
+      {activeTabId !== 'trash' && activeTabId !== 'archived' && (
+        <View style={{ position: 'absolute', bottom: 32, right: 32 }}>
+          <NeuPressable
+            radius={28}
+            isDark={settings.theme === 'dark'}
+            style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+            onPress={createNewNote}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.fabText}>+</Text>
+          </NeuPressable>
+        </View>
+      )}
 
       <Toast
         visible={toast.visible}

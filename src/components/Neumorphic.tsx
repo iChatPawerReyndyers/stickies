@@ -383,6 +383,14 @@ type NeuRadioProps = {
 
 export const NeuRadio: React.FC<NeuRadioProps> = ({ selected, isDark = false, size = 18 }) => {
   const p = getNeuPalette(isDark);
+  // Unselected ring color: p.darkShadow works fine in light mode (it's a
+  // visible mid-gray against the pale page), but in dark mode it's
+  // NEU_DARK_SHADOW_DARK_MODE (#0E0F12) — nearly indistinguishable from
+  // the dark page background, so the ring effectively disappears. Falling
+  // back to p.textSecondary in dark mode only (the same soft gray already
+  // used for hint text/labels there) keeps it visible without touching
+  // light mode's existing look.
+  const unselectedColor = isDark ? p.textSecondary : p.darkShadow;
   return (
     <View
       style={{
@@ -390,7 +398,7 @@ export const NeuRadio: React.FC<NeuRadioProps> = ({ selected, isDark = false, si
         height: size,
         borderRadius: size / 2,
         borderWidth: 2,
-        borderColor: selected ? NEU_ACCENT : p.darkShadow,
+        borderColor: selected ? NEU_ACCENT : unselectedColor,
         alignItems: 'center',
         justifyContent: 'center',
       }}

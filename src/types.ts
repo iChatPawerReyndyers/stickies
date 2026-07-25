@@ -46,6 +46,11 @@ export interface AppSettings {
   // and back again restores the previous items' checked state and order
   // instead of rebuilding a fresh, all-unchecked checklist from the text.
   restoreChecklistState: boolean;
+  // Default checklistTextMode ('single' = "Line", 'wrap' = "Wrap") applied
+  // to a brand-new checklist note, same role as defaultFont/defaultColor/
+  // defaultFontSize above — the note's own styling bar can still override
+  // it per-note afterward (see NoteModal.tsx's Display chips).
+  defaultChecklistTextMode: ChecklistTextMode;
   stickieStyles: StickieStyle[];
   defaultStyleId?: string;
   defaultTabId?: string;
@@ -55,6 +60,14 @@ export interface AppSettings {
   // MainScreen's resolveTabId helper. Defaults to true so existing users
   // see no change until they opt to hide it.
   showAllTab: boolean;
+  // Which tabs' notes actually populate the "All" aggregate view — set via
+  // components/AllTabFilterSection.tsx in Settings. undefined (the
+  // default) means every tab is included, so existing users see no change
+  // until they uncheck something there; once set, it's the explicit list
+  // of tab ids still included. "All" itself, Archived, and Trash are never
+  // listed there and aren't affected by this — but General IS a normal
+  // filterable row like any other tab, not permanently pinned in.
+  allTabIncludedIds?: string[];
   // App-wide PIN lock — when enabled, the app shows PinLockScreen on launch
   // (see components/PinLockScreen.tsx) and requires appPin to be entered
   // before the main screen becomes accessible. Stored in plaintext, same as

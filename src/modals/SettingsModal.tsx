@@ -11,9 +11,8 @@ import {
   SafeAreaView,
   Pressable,
   Dimensions,
-  Platform,
 } from 'react-native';
-import { AppSettings, AppTheme, SortOrder, ViewMode, Note, Tab } from '../types';
+import { AppSettings, AppTheme, SortOrder, ViewMode, ChecklistTextMode, Note, Tab } from '../types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
@@ -21,6 +20,7 @@ import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { NeuView, NeuPressable, NeuToggle, NeuRadio } from '../components/Neumorphic';
 import PinSetupModal from '../components/PinSetupModal';
 import StickieStyleSection from '../components/StickieStyleSection';
+import AllTabFilterSection from '../components/AllTabFilterSection';
 import { NEU_BASE, NEU_ACCENT, NEU_DANGER, NEU_TEXT_PRIMARY, NEU_TEXT_SECONDARY, NEU_RADIUS, getNeuPalette } from '../theme/neumorphic';
 
 type SettingsModalProps = {
@@ -53,11 +53,31 @@ const SettingsModal = ({
   // the lock off — still requires verifying the current PIN), or null when
   // no PIN modal should be shown.
   const [pinModalMode, setPinModalMode] = useState<'create' | 'change' | 'disable' | null>(null);
+  // Owned here (rather than as local state inside AllTabFilterSection)
+  // specifically so toggling a checkbox — which round-trips through
+  // onUpdateSettings and re-renders that section with new props — can
+  // never reset it back to collapsed.
+  const [allTabFilterExpanded, setAllTabFilterExpanded] = useState(false);
 
-  const isDark = settings.theme === 'dark';
+  // Effective values — each falls back to its group's first/default option
+  // when the underlying settings field is unset (e.g. an existing user's
+  // stored settings predate a newer field, or AppSettings' own seeded
+  // defaults haven't been updated yet). Falling back here means every
+  // toggle/chip below always shows something selected instead of nothing
+  // highlighted, without needing every call site to duplicate the same
+  // `|| default` fallback.
+  const effectiveTheme: AppTheme = settings.theme || 'light';
+  const isDark = effectiveTheme === 'dark';
   const p = getNeuPalette(isDark);
   const text = p.textPrimary;
   const sub = p.textSecondary;
+  const effectiveViewMode: ViewMode = settings.viewMode || 'grid';
+  const effectiveGridColumns: 2 | 3 = settings.gridColumns || 2;
+  const effectiveSortOrder: SortOrder = settings.sortOrder || SORT_OPTIONS[0].value;
+  const effectiveDefaultFont = settings.defaultFont || FONTS[0].value;
+  const effectiveDefaultColor = settings.defaultColor || COLORS[0];
+  const effectiveDefaultTextColor = settings.defaultTextColor || TEXT_COLORS[0];
+  const effectiveDefaultTabId = settings.defaultTabId || tabs[0]?.id;
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -147,7 +167,7 @@ const SettingsModal = ({
       style={{ paddingHorizontal: small ? 10 : 12, paddingVertical: small ? 6 : 7 }}
       onPress={onPress}
     >
-      <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : sub }}>{label}</Text>
+      <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? (isDark ? '#000000' : '#FFFFFF') : sub }}>{label}</Text>
     </NeuPressable>
   );
 
@@ -163,7 +183,7 @@ const SettingsModal = ({
     </NeuView>
   );
 
-  const isListView = settings.viewMode === 'list';
+  const isListView = effectiveViewMode === 'list';
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -171,7 +191,7 @@ const SettingsModal = ({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: p.base }}>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, marginTop: Platform.OS === 'android' ? 32 : 0 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, marginTop: 32 }}>
           <TouchableOpacity onPress={onClose}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: text }}>← Back</Text>
           </TouchableOpacity>
@@ -192,11 +212,11 @@ const SettingsModal = ({
                     key={t}
                     isDark={isDark}
                     radius={8}
-                    backgroundColor={settings.theme === t ? p.base : undefined}
+                    backgroundColor={effectiveTheme === t ? p.base : undefined}
                     style={{ paddingHorizontal: 12, paddingVertical: 6 }}
                     onPress={() => onUpdateSettings({ theme: t })}
                   >
-                    <Text style={{ fontSize: 11, fontWeight: settings.theme === t ? '700' : '400', color: settings.theme === t ? text : sub }}>
+                    <Text style={{ fontSize: 11, fontWeight: effectiveTheme === t ? '700' : '400', color: effectiveTheme === t ? text : sub }}>
                       {t === 'light' ? 'Light' : 'Dark'}
                     </Text>
                   </NeuPressable>
@@ -216,10 +236,10 @@ const SettingsModal = ({
                         backgroundColor={color}
                         style={[
                           { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
-                          settings.defaultColor === color && { borderWidth: 2, borderColor: text },
+                          effectiveDefaultColor === color && { borderWidth: 2, borderColor: text },
                         ]}
                       >
-                        {settings.defaultColor === color && <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>✓</Text>}
+                        {effectiveDefaultColor === color && <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>✓</Text>}
                       </NeuView>
                     </TouchableOpacity>
                   ))}
@@ -239,10 +259,10 @@ const SettingsModal = ({
                         backgroundColor={color}
                         style={[
                           { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
-                          settings.defaultTextColor === color && { borderWidth: 2, borderColor: NEU_ACCENT },
+                          effectiveDefaultTextColor === color && { borderWidth: 2, borderColor: NEU_ACCENT },
                         ]}
                       >
-                        {settings.defaultTextColor === color && <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF' }}>✓</Text>}
+                        {effectiveDefaultTextColor === color && <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF' }}>✓</Text>}
                       </NeuView>
                     </TouchableOpacity>
                   ))}
@@ -258,7 +278,7 @@ const SettingsModal = ({
                     <NeuChip
                       key={font.value}
                       label={font.name}
-                      active={settings.defaultFont === font.value}
+                      active={effectiveDefaultFont === font.value}
                       onPress={() => onUpdateSettings({ defaultFont: font.value })}
                     />
                   ))}
@@ -287,11 +307,11 @@ const SettingsModal = ({
                     key={mode}
                     isDark={isDark}
                     radius={8}
-                    backgroundColor={settings.viewMode === mode ? p.base : undefined}
+                    backgroundColor={effectiveViewMode === mode ? p.base : undefined}
                     style={{ paddingHorizontal: 14, paddingVertical: 6 }}
                     onPress={() => onUpdateSettings({ viewMode: mode })}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: settings.viewMode === mode ? '700' : '400', color: settings.viewMode === mode ? text : sub }}>
+                    <Text style={{ fontSize: 12, fontWeight: effectiveViewMode === mode ? '700' : '400', color: effectiveViewMode === mode ? text : sub }}>
                       {mode === 'grid' ? 'Grid' : 'List'}
                     </Text>
                   </NeuPressable>
@@ -314,11 +334,11 @@ const SettingsModal = ({
                       key={n}
                       isDark={isDark}
                       radius={8}
-                      backgroundColor={settings.gridColumns === n ? p.base : undefined}
+                      backgroundColor={effectiveGridColumns === n ? p.base : undefined}
                       style={{ paddingHorizontal: 14, paddingVertical: 6 }}
                       onPress={() => onUpdateSettings({ gridColumns: n })}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: settings.gridColumns === n ? '700' : '400', color: settings.gridColumns === n ? text : sub }}>{n}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: effectiveGridColumns === n ? '700' : '400', color: effectiveGridColumns === n ? text : sub }}>{n}</Text>
                     </NeuPressable>
                   ))}
                 </NeuView>
@@ -335,6 +355,23 @@ const SettingsModal = ({
             </Row>
           </SectionCard>
 
+          {/* Which tabs' notes actually populate the "All" pill above
+              (including General, not just user-created tabs). See
+              components/AllTabFilterSection.tsx — allTabIncludedIds routes
+              through settings the same way stickieStyles does below. */}
+          <View style={{ marginTop: 12 }}>
+            <SectionCard>
+              <AllTabFilterSection
+                isDark={isDark}
+                tabs={tabs}
+                includedTabIds={settings.allTabIncludedIds}
+                onIncludedTabIdsChange={(ids) => onUpdateSettings({ allTabIncludedIds: ids })}
+                expanded={allTabFilterExpanded}
+                onToggleExpanded={() => setAllTabFilterExpanded(v => !v)}
+              />
+            </SectionCard>
+          </View>
+
           {/* ── SORT ── */}
           <SectionHeader label="Sort notes by" />
           <SectionCard>
@@ -342,7 +379,7 @@ const SettingsModal = ({
               <TouchableOpacity key={opt.value} onPress={() => onUpdateSettings({ sortOrder: opt.value })}>
                 <Row last={i === SORT_OPTIONS.length - 1}>
                   <RowLabel label={opt.label} />
-                  <NeuRadio selected={settings.sortOrder === opt.value} isDark={isDark} />
+                  <NeuRadio selected={effectiveSortOrder === opt.value} isDark={isDark} />
                 </Row>
               </TouchableOpacity>
             ))}
@@ -359,13 +396,41 @@ const SettingsModal = ({
                 isDark={isDark}
               />
             </Row>
-            <Row last>
+            <Row>
               <RowLabel label="Restore checklist state" hint="Keep checked items and their order when switching a note back to checklist" />
               <NeuToggle
                 value={settings.restoreChecklistState}
                 onValueChange={(v) => onUpdateSettings({ restoreChecklistState: v })}
                 isDark={isDark}
               />
+            </Row>
+            <Row last>
+              <RowLabel label="Default checklist display" hint="How new checklist items show their text" />
+              <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3 }}>
+                {(['single', 'wrap'] as ChecklistTextMode[]).map(mode => {
+                  // Falls back to 'single' ("Line") when unset — existing
+                  // users won't have this field in storage until wherever
+                  // AppSettings' defaults are seeded (outside this file)
+                  // adds it, so this keeps the toggle showing the intended
+                  // default instead of neither chip being highlighted.
+                  const effectiveMode = settings.defaultChecklistTextMode || 'single';
+                  const active = effectiveMode === mode;
+                  return (
+                    <NeuPressable
+                      key={mode}
+                      isDark={isDark}
+                      radius={8}
+                      backgroundColor={active ? NEU_ACCENT : undefined}
+                      style={{ paddingHorizontal: 14, paddingVertical: 6 }}
+                      onPress={() => onUpdateSettings({ defaultChecklistTextMode: mode })}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '400', color: active ? '#FFFFFF' : sub }}>
+                        {mode === 'single' ? 'Line' : 'Wrap'}
+                      </Text>
+                    </NeuPressable>
+                  );
+                })}
+              </NeuView>
             </Row>
           </SectionCard>
 
@@ -417,7 +482,7 @@ const SettingsModal = ({
                         backgroundColor={tab.color}
                         style={[
                           { paddingHorizontal: 12, paddingVertical: 8, minWidth: 70, alignItems: 'center' },
-                          settings.defaultTabId === tab.id && { borderWidth: 2, borderColor: text },
+                          effectiveDefaultTabId === tab.id && { borderWidth: 2, borderColor: text },
                         ]}
                       >
                         <Text style={{ fontSize: 11, fontWeight: '600', color: tab.textColor || '#fff' }} numberOfLines={1}>{tab.name}</Text>

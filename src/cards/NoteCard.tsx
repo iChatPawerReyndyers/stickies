@@ -7,6 +7,7 @@ import { NeuPressable } from '../components/Neumorphic';
 import { NEU_RADIUS } from '../theme/neumorphic';
 import { resolveImageUrl } from '../utils/googleDriveImage';
 import { resolveFontStyle } from '../utils/fontResolver';
+import CheckboxIcon from '../components/CheckboxIcon';
 
 type NoteCardProps = {
   note: Note;
@@ -30,12 +31,32 @@ type NoteCardProps = {
   isDark?: boolean;
 };
 
+// Size of the mini checkbox rendered in the checklist preview. Uses the same
+// CheckboxIcon component NoteModal.tsx and StickieStylePreviewCard.tsx
+// render (see components/CheckboxIcon.tsx) so the card preview genuinely
+// matches the modal's checkbox styling instead of approximating it with a
+// hand-rolled box — this is a *preview* of the note, after all.
+const CARD_CHECKBOX_SIZE = 11;
+
 const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize, cardWidth, cardHeight, hasScreenBackgroundImage = false, isDark = false }: NoteCardProps) => {
   const size = propCardSize ?? CARD_SIZE;
   const width = cardWidth ?? size;
   const height = cardHeight ?? size;
   const getTextStyle = (): any => {
     return { ...resolveFontStyle(note.fontFamily, note.textStyle), color: note.textColor };
+  };
+
+  // Checklist title is always shown bold, regardless of the note's own
+  // textStyle setting — but resolving that bold weight has to go through
+  // resolveFontStyle (which swaps in the real Bold .ttf file when the
+  // chosen font bundles one) rather than just adding fontWeight:'700' on
+  // top of getTextStyle()'s result. Layering a manual fontWeight alongside
+  // a custom bundled fontFamily is exactly the case fontResolver.ts warns
+  // about on Android — it can knock the font back to the system default
+  // instead of just failing to render bold. Using 'bold' as the textStyle
+  // argument here keeps the chosen font family intact on both platforms.
+  const getTitleTextStyle = (): any => {
+    return { ...resolveFontStyle(note.fontFamily, 'bold'), color: note.textColor };
   };
 
   const m = note.margins || { top: 0, bottom: 0, left: 0, right: 0 };
@@ -109,7 +130,7 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
       <View>
         {titleItem?.text ? (
           <Text
-            style={[styles.cardPreview, textStyle, { fontWeight: '700', marginBottom: 3 }]}
+            style={[styles.cardPreview, getTitleTextStyle(), { marginBottom: 3 }]}
             numberOfLines={1}
           >
             {titleItem.text}
@@ -117,17 +138,17 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
         ) : null}
         {visibleItems.map((item: any) => (
           <View key={item.id} style={[{ flexDirection: 'row', alignItems: note.checklistTextMode === 'wrap' ? 'flex-start' : 'center' }, rowSpacingStyle]}>
-            {/* Mini checkbox matching the modal's rounded-square shape */}
+            {/* Mini checkbox — same CheckboxIcon used by NoteModal/
+                StickieStylePreviewCard, just shrunk down, so the card
+                preview actually matches what the note looks like when
+                opened instead of a different, hand-drawn box shape. */}
             <View style={{
-              width: 7, height: 7,
-              borderRadius: 1.5,
-              borderWidth: 0.8,
-              borderColor: textStyle.color || '#1C1C1E',
-              backgroundColor: item.completed ? (textStyle.color || '#1C1C1E') : 'transparent',
               marginRight: 3,
               marginTop: note.checklistTextMode === 'wrap' ? 3 : 0,
               flexShrink: 0,
-            }} />
+            }}>
+              <CheckboxIcon checked={item.completed} size={CARD_CHECKBOX_SIZE} />
+            </View>
             <Text
               style={[
                 styles.cardPreview,

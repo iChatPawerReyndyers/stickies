@@ -115,6 +115,11 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
   }, [editing, visible]);
 
   const isEditableCustomTab = !!editing && editing.id !== 'all' && editing.id !== 'general' && editing.id !== 'trash' && editing.id !== 'archived';
+  // All/Archived/Trash are fixed system tabs — unlike isEditableCustomTab
+  // above (which also excludes General, but only for the "place after"
+  // reordering control), General is deliberately NOT included here: it can
+  // still be renamed, just not reordered or deleted.
+  const isProtectedTab = !!editing && (editing.id === 'all' || editing.id === 'archived' || editing.id === 'trash');
   const afterOptions = (editing ? isEditableCustomTab : true)
     ? tabs.filter(tab => tab.id !== editing?.id && tab.id !== 'trash' && tab.id !== 'all' && tab.id !== 'archived')
     : [];
@@ -192,7 +197,7 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
           >
             <View style={modalStyles.formGroup}>
               <Text style={[modalStyles.itemLabel, { color: p.textSecondary }]}>Name</Text>
-              <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm}>
+              <NeuView isDark={isDark} inset radius={NEU_RADIUS.sm} style={isProtectedTab ? modalStyles.disabledField : undefined}>
                 <TextInput
                   style={[modalStyles.textInput, { color: p.textPrimary }]}
                   placeholder="Enter name"
@@ -200,8 +205,14 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
                   value={name}
                   onChangeText={setName}
                   autoCorrect={false}
+                  editable={!isProtectedTab}
                 />
               </NeuView>
+              {isProtectedTab && (
+                <Text style={[modalStyles.itemHint, { color: p.textSecondary, marginTop: 6, marginBottom: 0 }]}>
+                  Built-in tabs can't be renamed.
+                </Text>
+              )}
             </View>
 
             <View style={modalStyles.formGroup}>
@@ -408,34 +419,59 @@ const TabModal = ({ visible, editing, tabs, onSave, onDelete, onCancel, isDark =
               StickieStyleNameModal.tsx already uses for its own Cancel/Save.
               Order: Delete Tab + Cancel share the top row, Save sits full-width
               below — per request, so the primary action reads as one clear
-              full-width tap target instead of splitting the row three ways. */}
+              full-width tap target instead of splitting the row three ways.
+              Protected tabs (All/Archived/Trash) never show Delete Tab, so
+              that reasoning doesn't apply to them — Cancel/Save instead sit
+              side by side in a single row, same as StickieStyleNameModal's
+              own Cancel/Save row. */}
           <View style={modalStyles.footer}>
-            <View style={modalStyles.actionButtonRow}>
-              {editing?.id && (
+            {isProtectedTab ? (
+              <View style={modalStyles.actionButtonRow}>
                 <TouchableOpacity
                   style={[modalStyles.btn, modalStyles.btnInset, { backgroundColor: p.insetBase }]}
-                  onPress={() => onDelete(editing.id)}
+                  onPress={onCancel}
                   activeOpacity={0.8}
                 >
-                  <Text style={modalStyles.deleteRowText}>Delete Tab</Text>
+                  <Text style={modalStyles.btnCancelText}>Cancel</Text>
                 </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[modalStyles.btn, modalStyles.btnInset, { backgroundColor: p.insetBase }]}
-                onPress={onCancel}
-                activeOpacity={0.8}
-              >
-                <Text style={modalStyles.btnCancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={[modalStyles.btn, modalStyles.btnRaised, { backgroundColor: NEU_ACCENT, shadowColor: p.darkShadow }]}
+                  onPress={handleSave}
+                  activeOpacity={0.8}
+                >
+                  <Text style={modalStyles.btnSaveText}>{editing ? 'Save' : 'Create'}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <View style={modalStyles.actionButtonRow}>
+                  {editing?.id && (
+                    <TouchableOpacity
+                      style={[modalStyles.btn, modalStyles.btnInset, { backgroundColor: p.insetBase }]}
+                      onPress={() => onDelete(editing.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={modalStyles.deleteRowText}>Delete Tab</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[modalStyles.btn, modalStyles.btnInset, { backgroundColor: p.insetBase }]}
+                    onPress={onCancel}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={modalStyles.btnCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
 
-            <TouchableOpacity
-              style={[modalStyles.btnSaveFull, modalStyles.btnRaised, { backgroundColor: NEU_ACCENT, shadowColor: p.darkShadow }]}
-              onPress={handleSave}
-              activeOpacity={0.8}
-            >
-              <Text style={modalStyles.btnSaveText}>{editing ? 'Save' : 'Create'}</Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={[modalStyles.btnSaveFull, modalStyles.btnRaised, { backgroundColor: NEU_ACCENT, shadowColor: p.darkShadow }]}
+                  onPress={handleSave}
+                  activeOpacity={0.8}
+                >
+                  <Text style={modalStyles.btnSaveText}>{editing ? 'Save' : 'Create'}</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
 
@@ -521,6 +557,13 @@ const modalStyles = StyleSheet.create({
     fontSize: 10.5,
     marginBottom: 9,
     lineHeight: 14.5,
+  },
+  // Dims the Name field's wrapper for a protected (All/Archived/Trash) tab
+  // whose TextInput is set editable={false} — same visual language the
+  // rest of the app already uses for a disabled control (e.g. Grid columns
+  // in SettingsModal.tsx when List view is active).
+  disabledField: {
+    opacity: 0.5,
   },
   textInput: {
     height: 38,

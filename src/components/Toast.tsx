@@ -5,8 +5,13 @@
 
 import React, { useEffect, useRef } from 'react';
 import { Animated, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AUTO_HIDE_MS = 5000;
+// Base gap above the screen edge before any safe-area adjustment — the
+// toast sits above the FAB (see MainScreen's own FAB offset), so this stays
+// larger than the FAB's base 32px regardless of platform.
+const BASE_BOTTOM_OFFSET = 104;
 
 type ToastProps = {
   visible: boolean;
@@ -19,6 +24,11 @@ type ToastProps = {
 const Toast: React.FC<ToastProps> = ({ visible, message, onUndo, onHide, isDark = false }) => {
   const opacity = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Same rationale as MainScreen's own FAB: on Android this is the on-screen
+  // nav bar's real height when the 3-button bar is showing (smaller under
+  // gesture nav, 0 with none), so the toast clears it without needing a
+  // separate hardcoded value per nav mode.
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) {
@@ -40,7 +50,7 @@ const Toast: React.FC<ToastProps> = ({ visible, message, onUndo, onHide, isDark 
 
   return (
     <Animated.View
-      style={[styles.wrap, { opacity, backgroundColor: isDark ? '#3A3E48' : '#1C1C1E' }]}
+      style={[styles.wrap, { opacity, bottom: BASE_BOTTOM_OFFSET + insets.bottom, backgroundColor: isDark ? '#3A3E48' : '#1C1C1E' }]}
       pointerEvents="box-none"
     >
       <Text style={styles.message} numberOfLines={2}>{message}</Text>
@@ -67,7 +77,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 20,
     right: 20,
-    bottom: 104,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 16,

@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, LayoutChangeEvent, Dimensions } from 'react-native';
 import { Note, DEFAULT_LINE_SPACING } from '../types';
 import styles from '../styles';
-import SwipeToAction from '../components/SwipeToAction';
+import { NeuPressable } from '../components/Neumorphic';
 import { resolveFontStyle } from '../utils/fontResolver';
-import { getNeuPalette } from '../theme/neumorphic';
+import { getNeuPalette, NEU_ACCENT, NEU_DANGER, NEU_RADIUS } from '../theme/neumorphic';
 
 // Fixed bottom padding baked into styles.modalContent — subtracted below so
 // the computed scroll-area height matches the actual space left over after
@@ -24,27 +24,32 @@ type ReadOnlyModalProps = {
   visible: boolean;
   note: Note | null;
   onClose: () => void;
-  // Swipe-to-action while viewing a read-only (already-trashed) note. Left =
-  // permanently delete now, right = restore to the tab it was trashed from.
-  onSwipeDelete?: () => void;
-  onSwipeRestore?: () => void;
+  // Explicit action buttons for a read-only note (archived or trashed) —
+  // this view no longer supports swipe-to-action or any styling edits, so
+  // both moving the note back to its previous tab and (trash-only)
+  // permanently deleting it are surfaced as real buttons in the header
+  // instead. onRestore is always provided when the modal is shown for an
+  // archived/trashed note; onDeleteForever is only relevant — and only
+  // rendered — for a note currently in Trash.
+  onRestore?: () => void;
+  onDeleteForever?: () => void;
   // Follows the app's Theme setting for the card chrome (background,
   // header, title). The note's own text stays note.textColor either way —
   // that's the note's own styling choice, not app theme.
   isDark?: boolean;
 };
 
-const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore, isDark = false }: ReadOnlyModalProps) => {
+const ReadOnlyModal = ({ visible, note, onClose, onRestore, onDeleteForever, isDark = false }: ReadOnlyModalProps) => {
   const p = getNeuPalette(isDark);
 
-  // Measured pixel heights of the modal card and its header row. The scroll
-  // area previously relied on a flex:1 chain running through SwipeToAction's
-  // Animated.View (which also carries a transform for the swipe gesture) —
-  // that chain doesn't reliably resolve to a bounded height on every RN/
-  // platform combination, which can leave the ScrollView effectively
-  // unconstrained (and therefore not actually scrollable) even though the
-  // flex styles look correct. Measuring both boxes directly and giving the
-  // ScrollView an explicit numeric height sidesteps that entirely.
+  // Measured pixel heights of the modal card and its header block (title
+  // row + action-button row together — see onHeaderLayout below). A
+  // flex:1 chain here doesn't reliably resolve to a bounded height on
+  // every RN/platform combination, which can leave the ScrollView
+  // effectively unconstrained (and therefore not actually scrollable) even
+  // though the flex styles look correct. Measuring both boxes directly and
+  // giving the ScrollView an explicit numeric height sidesteps that
+  // entirely.
   const [containerHeight, setContainerHeight] = useState(0);
   const [headerHeight, setHeaderHeight] = useState(0);
 
@@ -117,31 +122,53 @@ const ReadOnlyModal = ({ visible, note, onClose, onSwipeDelete, onSwipeRestore, 
           ]}
           onLayout={onContainerLayout}
         >
-          <View style={[styles.modalHeader, { borderBottomColor: `${p.darkShadow}30` }]} onLayout={onHeaderLayout}>
-            <TouchableOpacity onPress={onClose}>
+          <View
+            onLayout={onHeaderLayout}
+            style={[styles.modalHeader, { borderBottomColor: `${p.darkShadow}30`, alignItems: 'flex-start' }]}
+          >
+            <TouchableOpacity onPress={onClose} style={{ paddingTop: 4 }}>
               <Text style={styles.modalCloseButton}>← Close</Text>
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: p.textPrimary }]}>View Note</Text>
-            <View style={{ width: 60 }} />
+            <Text style={[styles.modalTitle, { color: p.textPrimary, flex: 1, textAlign: 'center', paddingTop: 4 }]}>
+              View Note
+            </Text>
+            {/* Restore / Delete forever — replaces the old swipe-left/
+                swipe-right gestures now that this view is fully read-only.
+                Sits where the header's old symmetry spacer used to be.
+                Restore always sends the note back to note.previousTabId
+                (falling back to General). Delete forever only ever applies
+                to a note actually sitting in Trash, so it's a smaller
+                secondary link stacked underneath rather than a second
+                same-weight button. */}
+            <View style={{ alignItems: 'flex-end', gap: 6 }}>
+              {!!onRestore && (
+                <NeuPressable
+                  isDark={isDark}
+                  radius={NEU_RADIUS.sm}
+                  backgroundColor={NEU_ACCENT}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, gap: 6 }}
+                  onPress={onRestore}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>↺ Restore</Text>
+                </NeuPressable>
+              )}
+              {note.tabId === 'trash' && !!onDeleteForever && (
+                <TouchableOpacity onPress={onDeleteForever} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
+                  <Text style={{ color: NEU_DANGER, fontWeight: '700', fontSize: 11.5 }}>Delete Forever</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-          <SwipeToAction
-            enabled={!!(onSwipeDelete || onSwipeRestore)}
-            onSwipeLeft={onSwipeDelete}
-            onSwipeRight={onSwipeRestore}
-            leftLabel="Delete Forever"
-            rightLabel="Restore"
+          <ScrollView
+            style={[{ paddingHorizontal: 16, paddingTop: 16 }, scrollAreaStyle]}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+            scrollEnabled
           >
-            <ScrollView
-              style={[{ paddingHorizontal: 16, paddingTop: 16 }, scrollAreaStyle]}
-              contentContainerStyle={{ paddingBottom: 24 }}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              scrollEnabled
-            >
-              <Text style={[styles.label, getTextStyle(), { fontWeight: '700' }]}>{note.title}</Text>
-              {renderContent()}
-            </ScrollView>
-          </SwipeToAction>
+            <Text style={[styles.label, getTextStyle(), { fontWeight: '700' }]}>{note.title}</Text>
+            {renderContent()}
+          </ScrollView>
         </View>
       </View>
     </Modal>
