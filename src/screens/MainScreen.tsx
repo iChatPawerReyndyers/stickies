@@ -21,7 +21,7 @@ import ReadOnlyModal from '../modals/ReadOnlyModal';
 import Toast from '../components/Toast';
 import PinLockScreen from '../components/PinLockScreen';
 import styles, { getCardSize } from '../styles';
-import { Note, ChecklistItem, ContentType, TextStyle, Tab, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN } from '../types';
+import { Note, ChecklistItem, ContentType, TextStyle, Tab, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, AppSettings, SortOrder, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN, StickieStyle } from '../types';
 import {
   COLORS,
   TEXT_COLORS,
@@ -38,6 +38,7 @@ import { NeuView, NeuPressable } from '../components/Neumorphic';
 import { NEU_ACCENT, NEU_BASE } from '../theme/neumorphic';
 import { darkenColor } from '../utils/color';
 import { resolveImageUrl } from '../utils/googleDriveImage';
+import { resolveDefaultTabId } from '../utils/tabDefaults';
 
 // Hand-lettered "Stickies" wordmark shown in the header in place of plain
 // text. Lives at the project root's /assets folder (sibling to /screens,
@@ -78,6 +79,15 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const isBuiltInTabId = (id: string) => id === 'all' || id === 'general' || id === 'archived' || id === 'trash';
+
+// Archived and Trashed notes are both "locked" the same way: no swipe, no
+// styling edits, and opening one (tap or long-press) always goes to the
+// read-only viewer with a Restore action instead of the normal editor —
+// see ReadOnlyModal.tsx, which already implements exactly this (restore to
+// previousTabId, no swipe, delete-forever only for Trash). Previously only
+// Trash routed there; Archived still opened the full editor, which is what
+// let an archived note be swiped/styled at all.
+const isLockedNote = (note: Note) => note.tabId === 'trash' || note.tabId === 'archived';
 
 // "All" is a virtual, aggregate view over every other tab — it's never a
 // real tab a note can belong to. Anywhere a note's tabId would otherwise
@@ -211,6 +221,12 @@ const MainScreen = () => {
   // in the main grid (see the Styling bar's "Grid Size" control).
   const [selectedColSpan, setSelectedColSpan] = useState<number>(DEFAULT_COL_SPAN);
   const [selectedRowSpan, setSelectedRowSpan] = useState<number>(DEFAULT_ROW_SPAN);
+  // Which tab the note being created/edited belongs to — drives NoteModal's
+  // new header dropdown. Previously this was implicit: a new note always
+  // took resolveTabId(activeTabId) and an edited note always kept its own
+  // tabId, both baked straight into saveNote() with no way to change it
+  // from the editor itself.
+  const [selectedTabId, setSelectedTabId] = useState<string>('general');
   // Last-known checklist state (order + checked status) for the note being
   // edited, captured whenever its content type leaves 'checklist'. Lets
   // switching back restore it instead of starting from scratch — see
@@ -248,6 +264,28 @@ const MainScreen = () => {
 
   const updateSettings = (patch: Partial<AppSettings>) =>
     setSettings(prev => ({ ...prev, ...patch }));
+
+  // NoteModal's "Save as StickieStyle" button (styling bar, below "Use
+  // StickieStyle") — appends the note's current live styling as a brand
+  // new saved style, same list Settings' own StickieStyleSection reads
+  // from and writes to.
+  //
+  // Written to AsyncStorage right here rather than only via setSettings —
+  // the main persist effect below (keyed on [notes, tabs, activeTabId,
+  // settings, isDataLoaded]) would eventually catch this same change on
+  // its next run, but that's a step behind the state update rather than
+  // guaranteed to happen before it. A style saved from the note editor
+  // should be durable the instant Save is tapped, not dependent on the app
+  // staying open long enough for a following render's effect to fire.
+  const handleSaveNoteStyleAsStickieStyle = (style: StickieStyle) => {
+    setSettings(prev => {
+      const next = { ...prev, stickieStyles: [...prev.stickieStyles, style] };
+      AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next)).catch(e =>
+        console.warn('Failed to persist new StickieStyle', e)
+      );
+      return next;
+    });
+  };
 
   // Whether the main grid renders as single-column list rows instead of the
   // square-tile grid. When true, grid column count is irrelevant.
@@ -342,8 +380,13 @@ const MainScreen = () => {
           try {
             const parsed = JSON.parse(settingsJson);
             setSettings(prev => ({ ...prev, ...parsed }));
-            // Prefer the user's chosen default tab on startup if available
-            setActiveTabId(parsed.defaultTabId || activeTab || 'all');
+            // Prefer the user's chosen default tab on startup if available —
+            // resolveDefaultTabId sanitizes whichever candidate wins (the
+            // stored defaultTabId, or the last-active tab as its own
+            // fallback) against the tabs that actually still exist and
+            // whether All is currently hidden.
+            const rawStartupTab = parsed.defaultTabId || activeTab || 'all';
+            setActiveTabId(resolveDefaultTabId(rawStartupTab, finalTabsForMigration, parsed.showAllTab ?? true));
           } catch {
             // keep defaults
             setActiveTabId(activeTab || 'all');
@@ -399,13 +442,14 @@ const MainScreen = () => {
 
   // If the All pill is hidden (or gets hidden mid-session) while it's the
   // active tab, there'd be nothing to show in the rail as "selected" — jump
-  // to General instead, same place a note filed from the All view now ends
-  // up (see resolveTabId).
+  // to General instead (or, if General's also been deleted, the first
+  // remaining user-created tab — see resolveDefaultTabId), same place a
+  // note filed from the All view now ends up (see resolveTabId).
   useEffect(() => {
     if (isDataLoaded && !settings.showAllTab && activeTabId === 'all') {
-      setActiveTabId('general');
+      setActiveTabId(resolveDefaultTabId('general', tabs, settings.showAllTab));
     }
-  }, [isDataLoaded, settings.showAllTab, activeTabId]);
+  }, [isDataLoaded, settings.showAllTab, activeTabId, tabs]);
 
   const createNewNote = () => {
     if (activeTabId === 'trash') {
@@ -435,6 +479,7 @@ const MainScreen = () => {
     setSelectedColSpan(DEFAULT_COL_SPAN);
     setSelectedRowSpan(DEFAULT_ROW_SPAN);
     setChecklistSnapshot(undefined);
+    setSelectedTabId(resolveTabId(activeTabId));
     setShowModal(true);
   };
 
@@ -500,6 +545,7 @@ const MainScreen = () => {
     setSelectedColSpan(note.colSpan || DEFAULT_COL_SPAN);
     setSelectedRowSpan(note.rowSpan || DEFAULT_ROW_SPAN);
     setChecklistSnapshot(note.checklistSnapshot);
+    setSelectedTabId(ownerTabId(note, tabs));
     setShowModal(true);
   };
 
@@ -591,7 +637,7 @@ const MainScreen = () => {
               fontFamily: selectedFont,
               fontSize: selectedFontSize,
               textStyle: selectedTextStyle,
-              tabId: resolveTabId(editingNote.tabId),
+              tabId: resolveTabId(selectedTabId),
               useSvgBackground,
               svgFrameId: useSvgBackground ? svgFrameId : undefined,
               backgroundImageUrl,
@@ -618,7 +664,7 @@ const MainScreen = () => {
         fontFamily: selectedFont,
         fontSize: selectedFontSize,
         textStyle: selectedTextStyle,
-        tabId: resolveTabId(activeTabId),
+        tabId: resolveTabId(selectedTabId),
         useSvgBackground,
         svgFrameId: useSvgBackground ? svgFrameId : undefined,
         backgroundImageUrl,
@@ -733,19 +779,13 @@ const MainScreen = () => {
   // `noShadow` prop.
   const hasScreenBackgroundImage = !!resolvedScreenBgImage;
 
-  // A note sitting in Archived or Trash is read-only end to end now — no
-  // swipe, no styling — so both tap and long-press open the same
-  // ReadOnlyModal (with its Restore / Delete forever buttons) instead of
-  // the full editor or the swipeable View Only popup.
-  const isReadOnlyTab = (note: Note) => note.tabId === 'trash' || note.tabId === 'archived';
-
   // List view: single-column compact rows, no swipe-to-delete on the row
   // itself (swipe still works from inside the note modals).
   const renderListItem = ({ item }: { item: Note }) => (
     <NoteListRow
       note={item}
-      onEdit={() => (isReadOnlyTab(item) ? openReadOnly(item) : editNote(item))}
-      onLongPress={() => (isReadOnlyTab(item) ? openReadOnly(item) : openViewOnlyModal(item))}
+      onEdit={() => (isLockedNote(item) ? openReadOnly(item) : editNote(item))}
+      onLongPress={() => (isLockedNote(item) ? openReadOnly(item) : openViewOnlyModal(item))}
       hasScreenBackgroundImage={hasScreenBackgroundImage}
       isDark={settings.theme === 'dark'}
     />
@@ -1017,9 +1057,9 @@ const MainScreen = () => {
                     >
                       <NoteCard
                         note={note}
-                        onEdit={() => (isReadOnlyTab(note) ? openReadOnly(note) : editNote(note))}
+                        onEdit={() => (isLockedNote(note) ? openReadOnly(note) : editNote(note))}
                         onDelete={() => deleteNote(note.id)}
-                        onLongPress={() => (isReadOnlyTab(note) ? openReadOnly(note) : openViewOnlyModal(note))}
+                        onLongPress={() => (isLockedNote(note) ? openReadOnly(note) : openViewOnlyModal(note))}
                         cardWidth={width}
                         cardHeight={height}
                         hasScreenBackgroundImage={hasScreenBackgroundImage}
@@ -1049,21 +1089,17 @@ const MainScreen = () => {
         note={readOnlyNote}
         isDark={settings.theme === 'dark'}
         onClose={() => { setShowReadOnlyModal(false); setReadOnlyNote(null); }}
-        onRestore={readOnlyNote ? () => {
-          const note = readOnlyNote;
-          setShowReadOnlyModal(false);
-          setReadOnlyNote(null);
-          // handleSwipeAction's 'right' branch already resolves correctly
-          // for both an Archived note (unarchive) and a Trash note
-          // (restore) — either way the note goes back to
-          // note.previousTabId, falling back to General.
-          handleSwipeAction(note, 'right');
-        } : undefined}
-        onDeleteForever={readOnlyNote && readOnlyNote.tabId === 'trash' ? () => {
+        onDeleteForever={readOnlyNote ? () => {
           const note = readOnlyNote;
           setShowReadOnlyModal(false);
           setReadOnlyNote(null);
           handleSwipeAction(note, 'left');
+        } : undefined}
+        onRestore={readOnlyNote ? () => {
+          const note = readOnlyNote;
+          setShowReadOnlyModal(false);
+          setReadOnlyNote(null);
+          handleSwipeAction(note, 'right');
         } : undefined}
       />
 
@@ -1109,7 +1145,11 @@ const MainScreen = () => {
         selectedRowSpan={selectedRowSpan}
         onRowSpanChange={setSelectedRowSpan}
         maxColSpan={settings.gridColumns}
+        tabs={tabs}
+        selectedTabId={selectedTabId}
+        onTabIdChange={setSelectedTabId}
         stickieStyles={settings.stickieStyles}
+        onSaveAsStickieStyle={handleSaveNoteStyleAsStickieStyle}
         restoreChecklistState={settings.restoreChecklistState}
         checklistSnapshot={checklistSnapshot}
         onChecklistSnapshotChange={setChecklistSnapshot}
@@ -1248,20 +1288,24 @@ const MainScreen = () => {
           into NeuPressable's `style`, which could visually render the "+"
           in the bottom-right corner while the real touchable Pressable sat
           in a different, zero/mismatched-size box — reliably tappable in
-          the emulator's layout rounding, but missed on physical devices. */}
-      {activeTabId !== 'trash' && activeTabId !== 'archived' && (
-        <View style={{ position: 'absolute', bottom: 32, right: 32 }}>
-          <NeuPressable
-            radius={28}
-            isDark={settings.theme === 'dark'}
-            style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
-            onPress={createNewNote}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.fabText}>+</Text>
-          </NeuPressable>
-        </View>
-      )}
+          the emulator's layout rounding, but missed on physical devices.
+          bottom adds insets.bottom (the same hook already used for the
+          header's top padding) on top of the usual 32px gap — on Android
+          that's the on-screen nav bar's real height when the 3-button bar
+          is showing, a smaller value under gesture navigation, and 0 when
+          there's no nav bar to avoid at all; iOS gets its home-indicator
+          inset the same way. */}
+      <View style={{ position: 'absolute', bottom: 32 + insets.bottom, right: 32 }}>
+        <NeuPressable
+          radius={28}
+          isDark={settings.theme === 'dark'}
+          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+          onPress={createNewNote}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.fabText}>+</Text>
+        </NeuPressable>
+      </View>
 
       <Toast
         visible={toast.visible}

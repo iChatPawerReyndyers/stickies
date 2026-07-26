@@ -4,6 +4,16 @@ import { Note } from '../types';
 import { NeuPressable } from './Neumorphic';
 import { NEU_RADIUS } from '../theme/neumorphic';
 
+// Fixed margin the neumorphic shadow is allowed to bleed past the row's
+// own bounds — wrapping the row in an overflow:'hidden' container this
+// much larger than the card caps the shadow at exactly this amount
+// regardless of `distance`, instead of tuning distance by trial and error
+// (the layered fake-blur shadow's outermost layers can otherwise bleed
+// well past a card's edges — see Neumorphic.tsx's buildDarkBlurLayers/
+// buildLightBlurLayers — which read as a separate pale strip beneath the
+// row rather than a normal soft shadow).
+const LIST_ROW_SHADOW_CLIP = 3;
+
 type NoteListRowProps = {
   note: Note;
   onEdit: () => void;
@@ -27,36 +37,45 @@ const NoteListRow = ({ note, onEdit, onLongPress, hasScreenBackgroundImage = fal
   };
 
   return (
-    <NeuPressable
-      radius={NEU_RADIUS.md}
-      isDark={isDark}
-      backgroundColor={note.color}
-      noShadow={hasScreenBackgroundImage}
-      style={{ flexDirection: 'row', alignItems: 'center', padding: 14, marginBottom: 10 }}
-      onPress={onEdit}
-      onLongPress={onLongPress}
-      delayLongPress={200}
+    <View
+      style={{
+        borderRadius: NEU_RADIUS.lg + LIST_ROW_SHADOW_CLIP,
+        overflow: 'hidden',
+        padding: LIST_ROW_SHADOW_CLIP,
+        marginBottom: 10,
+      }}
     >
-      <View style={{ flex: 1 }}>
-        <Text
-          style={{ fontFamily: note.fontFamily, color: note.textColor, fontWeight: '700', fontSize: 15, marginBottom: 3 }}
-          numberOfLines={1}
-        >
-          {note.title}
-        </Text>
-        {!!getSnippet() && (
+      <NeuPressable
+        radius={NEU_RADIUS.lg}
+        isDark={isDark}
+        backgroundColor={note.color}
+        noShadow={hasScreenBackgroundImage}
+        style={{ flexDirection: 'row', alignItems: 'center', padding: 14 }}
+        onPress={onEdit}
+        onLongPress={onLongPress}
+        delayLongPress={200}
+      >
+        <View style={{ flex: 1 }}>
           <Text
-            style={{ fontFamily: note.fontFamily, color: note.textColor, opacity: 0.7, fontSize: 12 }}
+            style={{ fontFamily: note.fontFamily, color: note.textColor, fontWeight: '700', fontSize: 15, marginBottom: 3 }}
             numberOfLines={1}
           >
-            {getSnippet()}
+            {note.title}
           </Text>
+          {!!getSnippet() && (
+            <Text
+              style={{ fontFamily: note.fontFamily, color: note.textColor, opacity: 0.7, fontSize: 12 }}
+              numberOfLines={3}
+            >
+              {getSnippet()}
+            </Text>
+          )}
+        </View>
+        {note.contentType === 'checklist' && (
+          <Text style={{ fontSize: 13, color: note.textColor, opacity: 0.6, marginLeft: 8 }}>☑</Text>
         )}
-      </View>
-      {note.contentType === 'checklist' && (
-        <Text style={{ fontSize: 13, color: note.textColor, opacity: 0.6, marginLeft: 8 }}>☑</Text>
-      )}
-    </NeuPressable>
+      </NeuPressable>
+    </View>
   );
 };
 

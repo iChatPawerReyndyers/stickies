@@ -15,13 +15,14 @@ import {
   Keyboard,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN, StickieStyle } from '../types';
+import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN, StickieStyle, Tab } from '../types';
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { FRAME_COMPONENTS } from '../frames';
 import SwipeToAction from '../components/SwipeToAction';
 import { resolveImageUrl } from '../utils/googleDriveImage';
 import { NeuView, NeuPressable, NeuToggle } from '../components/Neumorphic';
 import NeuColorPickerModal from '../components/NeuColorPickerModal';
+import StickieStyleNameModal from './StickieStyleNameModal';
 import CheckboxIcon from '../components/CheckboxIcon';
 import { resolveFontStyle } from '../utils/fontResolver';
 import { NEU_RADIUS, NEU_ACCENT, NEU_DANGER, getNeuPalette } from '../theme/neumorphic';
@@ -35,18 +36,18 @@ import Clipboard from '@react-native-clipboard/clipboard';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
-// The long-press "View Only" preview (viewOnly=true below) is a full read
-// view rather than the compact editor card, so it gets its own size — 93%
-// of screen width and 70% of screen height — instead of the fixed
-// MODAL_WIDTH/MODAL_HEIGHT the editor and style-editor modes use.
-const VIEW_ONLY_WIDTH = SCREEN_WIDTH * 0.93;
-const VIEW_ONLY_HEIGHT = SCREEN_HEIGHT * 0.7;
-// Note editor card size for the normal create/edit flow when the person is
-// just looking at the note — keyboard down, styling bar closed. Same
-// footprint as ReadOnlyModal's own card, so a note reads at full size right
-// up until typing or the styling bar actually needs the room back.
-const EXPANDED_CARD_WIDTH = SCREEN_WIDTH * 0.93;
-const EXPANDED_CARD_HEIGHT = SCREEN_HEIGHT * 0.7;
+// IDLE_WIDTH/HEIGHT — 93% of screen width, 70% of screen height — is the
+// "just looking at the note" size, matching ReadOnlyModal.tsx's own card
+// exactly so a note doesn't visually jump in size going from
+// Archived/Trash's read-only viewer into a normal editable note. Originally
+// this was only used by the long-press "View Only" preview (viewOnly=true
+// below, hence the old VIEW_ONLY_* naming); the normal create/edit flow now
+// *also* opens at this size and only shrinks to the compact
+// MODAL_WIDTH/MODAL_HEIGHT card once the person actually starts doing
+// something that needs the smaller footprint — the keyboard coming up
+// (typing) or the styling bar opening (see isCompactSize below).
+const IDLE_WIDTH = SCREEN_WIDTH * 0.93;
+const IDLE_HEIGHT = SCREEN_HEIGHT * 0.7;
 const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.285);
 const MODAL_WIDTH = 320;
 const CARD_HORIZONTAL_PADDING = 24;
@@ -59,6 +60,25 @@ const MINI_SWATCH = 22;
 const MINI_GAP = 6;
 
 const BRUSH_STROKE_COLOR = '#E7C4B2';
+
+// ── Text-note list auto-continue ────────────────────────────────────────────
+//
+// Matches a bullet ("- " or "* ") or a numbered ("1. ", "2. ", …) prefix at
+// the start of a line, capturing any leading indentation separately so it's
+// preserved when the prefix is repeated/incremented on the next line.
+const TEXT_BULLET_PREFIX_RE = /^(\s*)([-*])\s+/;
+const TEXT_NUMBER_PREFIX_RE = /^(\s*)(\d+)\.\s+/;
+
+// True when `line` is nothing but a bullet/number prefix with no real text
+// after it — i.e. an "empty" list line, the trigger for exiting the list
+// (see textEnterPressedRef/textBackspacePendingRef below).
+const isEmptyListLine = (line: string): boolean => {
+  const bulletMatch = line.match(TEXT_BULLET_PREFIX_RE);
+  if (bulletMatch) return line.slice(bulletMatch[0].length).trim() === '';
+  const numberMatch = line.match(TEXT_NUMBER_PREFIX_RE);
+  if (numberMatch) return line.slice(numberMatch[0].length).trim() === '';
+  return false;
+};
 
 // CheckboxIcon now lives in ../components/CheckboxIcon (imported above) so
 // it can be reused by StickieStylePreviewCard without duplicating the SVG
@@ -114,6 +134,13 @@ const BrushStroke: React.FC<{ index: number }> = ({ index }) => {
     </View>
   );
 };
+
+// Tabs a note can actually be reassigned to from this dropdown — 'all' is a
+// virtual aggregate (never a real owner), and Archived/Trash stay
+// swipe-only moves (they carry their own archivedAt/deletedAt/previousTabId
+// bookkeeping in MainScreen's handleSwipeAction) rather than a plain
+// reassignment here.
+const TAB_DROPDOWN_EXCLUDED_IDS = new Set(['all', 'archived', 'trash']);
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -212,9 +239,51 @@ type NoteModalProps = {
   // (see MainScreen) — so applying a saved style's own specific frame needs
   // its own setter, called last so the specific id wins over the random one.
   onSvgFrameIdChange?: (id: string | undefined) => void;
+  // Full tab list — drives the owner-tab dropdown in the header (replaces
+  // the old plain tabName label). Only rendered when this, selectedTabId,
+  // and onTabIdChange are all provided, and never in viewOnly/
+  // styleEditorMode (a View Only note isn't being reassigned, and a
+  // StickieStyle template has no owner tab at all) — those callers can
+  // keep passing just tabName and get the old plain-label header.
+  tabs?: Tab[];
+  selectedTabId?: string;
+  onTabIdChange?: (id: string) => void;
+  // Called when the person taps "Save as StickieStyle" in the styling bar
+  // (see the button next to the "Use StickieStyle" toggle). Receives a
+  // fully-formed StickieStyle (fresh id, whatever name they typed into the
+  // naming modal, and the note's current live styling fields) — the caller
+  // just appends it to settings.stickieStyles. Omitted entirely — same as
+  // tabs/selectedTabId/onTabIdChange above — for viewOnly/styleEditorMode
+  // callers, which never render the button in the first place.
+  onSaveAsStickieStyle?: (style: StickieStyle) => void;
 };
 
 // ── Snapshot type ──────────────────────────────────────────────────────────────
+
+// Captures the field values a saved StickieStyle had *at the moment it was
+// applied* — compared live against the note's current styling to tell
+// "still exactly this style" apart from "used it as a starting point and
+// then changed things" (see isStyleUnchangedFromApplied below, and the
+// "Save as StickieStyle" button that reads it). id/name ride along too, so
+// the "Apply style" trigger and its dropdown list can show which style is
+// currently in use regardless of whether its fields still match exactly.
+interface AppliedStyleSnapshot {
+  id: string;
+  name: string;
+  color: string;
+  textColor: string;
+  fontFamily: string;
+  fontSize: number;
+  textStyle: TextStyle;
+  useSvgBackground: boolean;
+  svgFrameId: string | undefined;
+  backgroundImageUrl: string;
+  margins: NoteMargins;
+  itemSpacing: ItemSpacing;
+  lineSpacing: number;
+  checklistSort: ChecklistSort;
+  checklistTextMode: ChecklistTextMode;
+}
 
 interface StylingSnapshot {
   contentType: ContentType;
@@ -234,28 +303,6 @@ interface StylingSnapshot {
   selectedColSpan: number;
   selectedRowSpan: number;
   checklistSnapshot: ChecklistItem[] | undefined;
-}
-
-// Narrower than StylingSnapshot above — only the fields applyStickieStyle
-// actually touches (never contentType/content: a style describes look, not
-// the note's own text). Captured right before the first StickieStyle
-// application in a toggle-on session, and restored if "Use StickieStyle"
-// gets switched back off — see applyStickieStyle / the toggle's
-// onValueChange handler below.
-interface PreStickieStyleSnapshot {
-  selectedColor: string;
-  selectedTextColor: string;
-  selectedFont: string;
-  selectedFontSize: number;
-  selectedTextStyle: TextStyle;
-  useSvgBackground: boolean;
-  svgFrameId: string | undefined;
-  backgroundImageUrl: string | undefined;
-  selectedMargins: NoteMargins;
-  selectedItemSpacing: ItemSpacing;
-  selectedLineSpacing: number;
-  selectedChecklistSort: ChecklistSort;
-  selectedChecklistTextMode: ChecklistTextMode;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -297,26 +344,36 @@ const NoteModal = ({
   onSwipeArchive,
   stickieStyles = [],
   onSvgFrameIdChange,
+  tabs,
+  selectedTabId,
+  onTabIdChange,
+  onSaveAsStickieStyle,
 }: NoteModalProps) => {
   const [showStyling, setShowStyling] = useState(false);
   const [showStyleDropdown, setShowStyleDropdown] = useState(false);
+  // Owner-tab dropdown in the header — see TAB_DROPDOWN_EXCLUDED_IDS above.
+  // Only ever opened when the trigger itself is shown (see the render
+  // logic below), but kept as its own flag rather than reusing
+  // showStyleDropdown since the two can't ever be open at the same time
+  // anyway (styling bar isn't visible while this header row is active) but
+  // conflating them would be a landmine the moment that assumption changes.
+  const [showTabDropdown, setShowTabDropdown] = useState(false);
   // Controls whether the StickieStyle picker section (leftmost in the
   // styling bar) is shown at all. Starts false every time the modal opens
   // (see the reset effect below) — the person opts in per note rather than
   // this carrying over from whatever they last did.
   const [useStickieStyleToggle, setUseStickieStyleToggle] = useState(false);
-  // Id of the StickieStyle most recently applied via the dropdown below —
-  // null whenever nothing's been picked yet this session. Drives the
-  // "Styling applied" / "Styling inspo" status label (see
-  // stickieStyleMatchesCurrent below the render helpers).
-  const [appliedStickieStyleId, setAppliedStickieStyleId] = useState<string | null>(null);
-  // Styling as it stood immediately before the *first* StickieStyle
-  // application since the toggle was last turned on — a ref rather than
-  // state since it's only ever read on toggle-off, never rendered.
-  // Preserved across picking multiple styles in a row, so turning the
-  // toggle back off always restores what was there before any of them,
-  // not just before the last one picked.
-  const preStickieStyleSnapshotRef = useRef<PreStickieStyleSnapshot | null>(null);
+  // Set whenever a saved StickieStyle is actually applied (see
+  // applyStickieStyle below); cleared when the toggle turns off or the
+  // modal closes. Comparing this against the note's live styling fields is
+  // how the "Save as StickieStyle" button decides whether the person is
+  // still using the style as-is (button hidden — saving would just
+  // duplicate it) or has changed something since (button shown — they're
+  // using it "as inspo").
+  const [appliedStickieStyleSnapshot, setAppliedStickieStyleSnapshot] = useState<AppliedStyleSnapshot | null>(null);
+  // Naming modal for "Save as StickieStyle" — same StickieStyleNameModal
+  // Settings' own Add New/Edit Current flow uses.
+  const [showSaveStyleNameModal, setShowSaveStyleNameModal] = useState(false);
   // Measured height of the "StickieStyle" label + trigger block (see
   // onLayout below), used to anchor the floating dropdown list right under
   // the trigger. A hardcoded pixel guess here previously left a large gap
@@ -338,11 +395,11 @@ const NoteModal = ({
   // dismissed — otherwise a horizontal drag on the text input would fight
   // with cursor placement / text selection.
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  // Actual on-screen keyboard height (from the OS, via endCoordinates —
-  // varies by device/keyboard, so this is never hardcoded), used below to
-  // recenter the card in whatever space is still visible above the
-  // keyboard instead of the card's center point staying pinned to the
-  // full, keyboard-covered screen.
+  // The keyboard's real on-screen height (0 when hidden) — used to center
+  // the card in whatever space is actually left above it (see the
+  // centering View below) instead of leaning on KeyboardAvoidingView's
+  // generic padding behavior, which pads the whole screen rather than
+  // re-centering just the card within the remaining room.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   // Drives the dot pagination indicator under the styling bar's horizontal
   // scroll strip — tracked as raw pixel measurements rather than a 0-1
@@ -399,6 +456,16 @@ const NoteModal = ({
   // Tracks whether an empty checklist item has already seen one Backspace press —
   // a second consecutive Backspace on a still-empty item deletes it.
   const backspacePendingRef = useRef<{ [id: string]: boolean }>({});
+  // Same Enter/Backspace tracking pattern as the checklist's own
+  // enterPressedRef/backspacePendingRef above, applied to the plain-text
+  // note's single TextInput instead of one ref per checklist item — see
+  // handleTextContentChange/handleTextContentKeyPress below. Both are
+  // heuristics that assume the person is typing at the end of the current
+  // line (true for normal top-to-bottom note-taking); editing a list line
+  // buried earlier in a long note won't trigger auto-continue/-exit, it'll
+  // just insert a plain newline like today.
+  const textEnterPressedRef = useRef(false);
+  const textBackspacePendingRef = useRef(false);
 
   const p = getNeuPalette(isDark);
 
@@ -409,6 +476,19 @@ const NoteModal = ({
   // a value it can't resolve.
   const effectiveFont = FONTS.some(f => f.value === selectedFont) ? selectedFont : FONTS[0].value;
 
+  // Header owner-tab dropdown — only enabled when the caller wired up all
+  // three of tabs/selectedTabId/onTabIdChange, and never in viewOnly or
+  // styleEditorMode (see the prop comment above). MainScreen's own
+  // viewOnly/styleEditorMode NoteModal instances simply don't pass these,
+  // so they fall back to the old plain tabName label automatically.
+  const canPickOwnerTab = !viewOnly && !styleEditorMode && !!tabs && !!onTabIdChange;
+  const ownerTabOptions = canPickOwnerTab
+    ? (tabs as Tab[]).filter(t => !TAB_DROPDOWN_EXCLUDED_IDS.has(t.id))
+    : [];
+  const displayedTabName = canPickOwnerTab
+    ? (ownerTabOptions.find(t => t.id === selectedTabId)?.name || tabName)
+    : tabName;
+
   // Read-only note content is presented the same way as previewMode's
   // (non-editable) rendering — this just extends that same rendering path.
   const isReadOnlyContent = previewMode || viewOnly || styleEditorMode;
@@ -417,27 +497,6 @@ const NoteModal = ({
   // the styling bar is closed and the keyboard is down — i.e. exactly the
   // "just looking at the note" state.
   const swipeEnabled = !previewMode && (viewOnly || (!showStyling && !isKeyboardVisible));
-
-  // Card grows to the same footprint as ReadOnlyModal whenever the person
-  // is just viewing the note in the normal create/edit flow (keyboard down,
-  // styling bar closed), then drops back to the compact editor size the
-  // moment either one needs the screen space. viewOnly keeps its own fixed
-  // large size regardless (see VIEW_ONLY_WIDTH/HEIGHT above); styleEditorMode
-  // always has showStyling === true (see the effect above), so it always
-  // falls through to the compact size here without needing its own check.
-  const isExpandedCardMode = !viewOnly && !showStyling && !isKeyboardVisible;
-
-  // On iOS, the KeyboardAvoidingView wrapping this whole modal (behavior:
-  // 'padding', enabled only on iOS below) already pushes everything up by
-  // the keyboard's own height — adding that height again here would shift
-  // the card twice. Android has no such built-in behavior (that
-  // KeyboardAvoidingView is disabled there), so it's the platform that
-  // actually needs this: without it, the card stays centered on the full
-  // screen and ends up half-hidden behind the keyboard instead of centered
-  // in the space still visible above it.
-  const keyboardCenteringOffset = isKeyboardVisible && Platform.OS === 'android' ? keyboardHeight : 0;
-  const cardWidth = viewOnly ? VIEW_ONLY_WIDTH : isExpandedCardMode ? EXPANDED_CARD_WIDTH : MODAL_WIDTH;
-  const cardHeight = viewOnly ? VIEW_ONLY_HEIGHT : isExpandedCardMode ? EXPANDED_CARD_HEIGHT : MODAL_HEIGHT;
 
   const items: ChecklistItem[] = Array.isArray(content) ? (content as ChecklistItem[]) : [];
 
@@ -451,12 +510,13 @@ const NoteModal = ({
     if (!visible) {
       setShowStyling(false);
       setShowStyleDropdown(false);
+      setShowTabDropdown(false);
       setUseStickieStyleToggle(false);
+      setAppliedStickieStyleSnapshot(null);
+      setShowSaveStyleNameModal(false);
       setStylingSnapshot(null);
       setEditingItemId(null);
       editingSnapshotRef.current = null;
-      setAppliedStickieStyleId(null);
-      preStickieStyleSnapshotRef.current = null;
     }
   }, [visible]);
 
@@ -486,14 +546,24 @@ const NoteModal = ({
 
   // Track keyboard visibility for the swipe-enabled gate above.
   useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
-      setIsKeyboardVisible(true);
-      setKeyboardHeight(e.endCoordinates?.height ?? 0);
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      setIsKeyboardVisible(false);
-      setKeyboardHeight(0);
-    });
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Real keyboard height for the centering logic below. 'Will' events fire
+  // earlier on iOS (in step with its own show/hide animation) — falling
+  // back to the 'Did' variant on Android, which doesn't emit 'Will' events
+  // at all. endCoordinates.height is the actual keyboard height for this
+  // device/orientation, not a hardcoded guess.
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => setKeyboardHeight(e.endCoordinates?.height || 0));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
     return () => {
       showSub.remove();
       hideSub.remove();
@@ -624,6 +694,101 @@ const NoteModal = ({
     [items[0], ...sortItems(items.slice(1))]
   ).filter(Boolean) as ChecklistItem[];
 
+  // ── Text-note list auto-continue ─────────────────────────────────────────────
+  //
+  // onKeyPress fires (and sets textEnterPressedRef) *before* onChangeText
+  // sees the resulting value — same ordering the checklist's wrap-mode
+  // Enter handling above already relies on — so by the time onChangeText
+  // runs we know whether the just-inserted '\n' came from a real Enter
+  // press. Backspace deliberately ISN'T handled here: RN's TextInput has no
+  // way to stop the native character deletion a Backspace keypress already
+  // triggers, so intercepting it in onKeyPress can't actually prevent
+  // anything — handleTextContentChange below instead diffs the old/new text
+  // directly to recognize a Backspace after the fact.
+  const handleTextContentKeyPress = ({ nativeEvent }: { nativeEvent: { key: string } }) => {
+    if (nativeEvent.key === 'Enter') textEnterPressedRef.current = true;
+  };
+
+  const handleTextContentChange = (text: string) => {
+    const oldText = typeof content === 'string' ? content : '';
+
+    // ── Enter: continue or exit the list ──
+    if (textEnterPressedRef.current) {
+      textEnterPressedRef.current = false;
+      textBackspacePendingRef.current = false;
+
+      const lines = text.split('\n');
+      if (lines.length < 2) {
+        onContentChange(text);
+        return;
+      }
+      // The line that was just completed by this Enter press, and the
+      // fresh (still-empty) line it created.
+      const completedLineIndex = lines.length - 2;
+      const newLineIndex = lines.length - 1;
+      const completedLine = lines[completedLineIndex];
+
+      const bulletMatch = completedLine.match(TEXT_BULLET_PREFIX_RE);
+      const numberMatch = !bulletMatch ? completedLine.match(TEXT_NUMBER_PREFIX_RE) : null;
+
+      if (bulletMatch || numberMatch) {
+        if (isEmptyListLine(completedLine)) {
+          // Second Enter on an empty bullet/number line — drop the prefix
+          // and leave a single plain empty line rather than continuing the
+          // list onto yet another line.
+          lines[completedLineIndex] = '';
+          lines.splice(newLineIndex, 1);
+          onContentChange(lines.join('\n'));
+          return;
+        }
+        lines[newLineIndex] = bulletMatch
+          ? `${bulletMatch[1]}${bulletMatch[2]} `
+          : `${numberMatch![1]}${parseInt(numberMatch![2], 10) + 1}. `;
+        onContentChange(lines.join('\n'));
+        return;
+      }
+
+      onContentChange(text);
+      return;
+    }
+
+    // ── Backspace: recognize a single character removed from the last
+    // line, since that's the only shape of edit this feature cares about
+    // (typing normally, or backspacing from the end, matches the same
+    // "editing at the end" assumption the Enter handling above makes). ──
+    const oldLines = oldText.split('\n');
+    const newLines = text.split('\n');
+    const isSingleLineBackspace =
+      oldLines.length === newLines.length &&
+      oldLines.slice(0, -1).join('\n') === newLines.slice(0, -1).join('\n') &&
+      newLines[newLines.length - 1] === oldLines[oldLines.length - 1].slice(0, -1);
+
+    if (isSingleLineBackspace) {
+      const oldLastLine = oldLines[oldLines.length - 1];
+      if (isEmptyListLine(oldLastLine)) {
+        // First Backspace landing on an untouched, empty bullet/number
+        // line — let this single-character deletion go through as normal,
+        // but remember that the *next* Backspace (if it immediately
+        // follows) should clear the rest of the prefix in one go.
+        textBackspacePendingRef.current = true;
+        onContentChange(text);
+        return;
+      }
+      if (textBackspacePendingRef.current) {
+        // Second consecutive Backspace still shrinking that same prefix —
+        // clear whatever's left of it entirely instead of removing just
+        // one more character.
+        newLines[newLines.length - 1] = '';
+        textBackspacePendingRef.current = false;
+        onContentChange(newLines.join('\n'));
+        return;
+      }
+    }
+
+    textBackspacePendingRef.current = false;
+    onContentChange(text);
+  };
+
   // ── Text style ───────────────────────────────────────────────────────────────
 
   const getTextStyle = (): any => {
@@ -654,6 +819,7 @@ const NoteModal = ({
   const openStyling = () => {
     Keyboard.dismiss();
     setEditingItemId(null);
+    setShowTabDropdown(false);
     setBarScrollX(0);
     setStylingSnapshot({
       contentType, content,
@@ -702,17 +868,6 @@ const NoteModal = ({
   // saved style describes look, not the note's own text/checklist content,
   // so applying one never disturbs what's already been typed.
   const applyStickieStyle = (style: StickieStyle) => {
-    // Only capture on the first apply this toggle-on session — see the
-    // PreStickieStyleSnapshot comment above for why this deliberately
-    // isn't re-captured on every pick.
-    if (!preStickieStyleSnapshotRef.current) {
-      preStickieStyleSnapshotRef.current = {
-        selectedColor, selectedTextColor, selectedFont, selectedFontSize,
-        selectedTextStyle, useSvgBackground, svgFrameId,
-        backgroundImageUrl, selectedMargins, selectedItemSpacing, selectedLineSpacing,
-        selectedChecklistSort, selectedChecklistTextMode,
-      };
-    }
     onColorChange(style.color);
     onTextColorChange(style.textColor);
     onFontChange(style.fontFamily);
@@ -728,83 +883,134 @@ const NoteModal = ({
     onLineSpacingChange(style.lineSpacing ?? DEFAULT_LINE_SPACING);
     onChecklistSortChange(style.checklistSort || 'as-is');
     onChecklistTextModeChange(style.checklistTextMode || 'single');
-    setAppliedStickieStyleId(style.id);
+    setAppliedStickieStyleSnapshot({
+      id: style.id,
+      name: style.name,
+      color: style.color,
+      textColor: style.textColor,
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      textStyle: style.textStyle,
+      useSvgBackground: style.useSvgBackground,
+      svgFrameId: style.useSvgBackground ? style.svgFrameId : undefined,
+      backgroundImageUrl: style.backgroundImageUrl || '',
+      margins: style.margins || DEFAULT_MARGINS,
+      itemSpacing: style.itemSpacing || DEFAULT_ITEM_SPACING,
+      lineSpacing: style.lineSpacing ?? DEFAULT_LINE_SPACING,
+      checklistSort: style.checklistSort || 'as-is',
+      checklistTextMode: style.checklistTextMode || 'single',
+    });
     setShowStyleDropdown(false);
   };
 
-  // Whether the note's current styling still matches a given StickieStyle
-  // field-for-field — drives "Styling applied" vs "Styling inspo" below.
-  // Mirrors exactly the set of fields applyStickieStyle itself sets, so a
-  // change to any *other* field (e.g. content) never flips this to
-  // "inspo" on its own.
-  const stickieStyleMatchesCurrent = (style: StickieStyle): boolean => {
-    const styleMargins = style.margins || DEFAULT_MARGINS;
-    const styleItemSpacing = style.itemSpacing || DEFAULT_ITEM_SPACING;
-    const styleLineSpacing = style.lineSpacing ?? DEFAULT_LINE_SPACING;
+  // True once a saved StickieStyle has been applied AND every field it set
+  // still matches the note's current live styling exactly — i.e. nothing's
+  // been touched since. False the moment anything diverges (color tweaked,
+  // font changed, margins nudged, etc.), which is exactly the "using it as
+  // inspo rather than keeping it as-is" signal the save button reads.
+  const isStyleUnchangedFromApplied = (): boolean => {
+    const snap = appliedStickieStyleSnapshot;
+    if (!snap) return false;
     return (
-      selectedColor === style.color &&
-      selectedTextColor === style.textColor &&
-      selectedFont === style.fontFamily &&
-      selectedFontSize === style.fontSize &&
-      selectedTextStyle === style.textStyle &&
-      useSvgBackground === style.useSvgBackground &&
-      (!useSvgBackground || svgFrameId === style.svgFrameId) &&
-      (backgroundImageUrl || '') === (style.backgroundImageUrl || '') &&
-      selectedMargins.top === styleMargins.top &&
-      selectedMargins.bottom === styleMargins.bottom &&
-      selectedMargins.left === styleMargins.left &&
-      selectedMargins.right === styleMargins.right &&
-      selectedItemSpacing.top === styleItemSpacing.top &&
-      selectedItemSpacing.bottom === styleItemSpacing.bottom &&
-      selectedLineSpacing === styleLineSpacing &&
-      selectedChecklistSort === (style.checklistSort || 'as-is') &&
-      selectedChecklistTextMode === (style.checklistTextMode || 'single')
+      snap.color === selectedColor &&
+      snap.textColor === selectedTextColor &&
+      snap.fontFamily === selectedFont &&
+      snap.fontSize === selectedFontSize &&
+      snap.textStyle === selectedTextStyle &&
+      snap.useSvgBackground === useSvgBackground &&
+      (snap.svgFrameId || undefined) === (svgFrameId || undefined) &&
+      snap.backgroundImageUrl === (backgroundImageUrl || '') &&
+      snap.margins.top === selectedMargins.top &&
+      snap.margins.bottom === selectedMargins.bottom &&
+      snap.margins.left === selectedMargins.left &&
+      snap.margins.right === selectedMargins.right &&
+      snap.itemSpacing.top === selectedItemSpacing.top &&
+      snap.itemSpacing.bottom === selectedItemSpacing.bottom &&
+      snap.lineSpacing === selectedLineSpacing &&
+      snap.checklistSort === selectedChecklistSort &&
+      snap.checklistTextMode === selectedChecklistTextMode
     );
   };
 
-  const appliedStickieStyle = appliedStickieStyleId
-    ? stickieStyles.find(st => st.id === appliedStickieStyleId)
-    : undefined;
-  const stickieStyleIsExactMatch = appliedStickieStyle ? stickieStyleMatchesCurrent(appliedStickieStyle) : false;
-  const stickieStyleStatusLabel = appliedStickieStyle
-    ? (stickieStyleIsExactMatch
-        ? `Styling applied: ${appliedStickieStyle.name}`
-        : `Styling inspo: ${appliedStickieStyle.name}`)
-    : null;
+  // "Save as StickieStyle" button visibility — see the prop comment on
+  // onSaveAsStickieStyle. Shown whenever the toggle is off, or it's on but
+  // the applied style's been used as a starting point rather than kept
+  // exactly (or nothing's actually been applied yet this session).
+  const canSaveAsStickieStyle =
+    !viewOnly && !styleEditorMode && !!onSaveAsStickieStyle &&
+    (!useStickieStyleToggle || !isStyleUnchangedFromApplied());
 
-  // "Use StickieStyle" toggle handler — turning it off restores whatever
-  // styling was in place before the first style was applied this session
-  // (see preStickieStyleSnapshotRef above), then clears the applied-style
-  // tracking so the status label disappears along with the section.
-  const handleStickieStyleToggleChange = (value: boolean) => {
-    if (!value && appliedStickieStyleId && preStickieStyleSnapshotRef.current) {
-      const snap = preStickieStyleSnapshotRef.current;
-      onColorChange(snap.selectedColor);
-      onTextColorChange(snap.selectedTextColor);
-      onFontChange(snap.selectedFont);
-      onFontSizeChange(snap.selectedFontSize);
-      onTextStyleChange(snap.selectedTextStyle);
-      onUseSvgBackgroundChange(snap.useSvgBackground);
-      onSvgFrameIdChange?.(snap.svgFrameId);
-      onBackgroundImageUrlChange?.(snap.backgroundImageUrl || '');
-      onMarginsChange(snap.selectedMargins);
-      onItemSpacingChange(snap.selectedItemSpacing);
-      onLineSpacingChange(snap.selectedLineSpacing);
-      onChecklistSortChange(snap.selectedChecklistSort);
-      onChecklistTextModeChange(snap.selectedChecklistTextMode);
-    }
-    setAppliedStickieStyleId(null);
-    preStickieStyleSnapshotRef.current = null;
-    setUseStickieStyleToggle(value);
+  const handleSaveAsStickieStyleName = (name: string) => {
+    const style: StickieStyle = {
+      id: Date.now().toString(),
+      name,
+      color: selectedColor,
+      textColor: selectedTextColor,
+      fontFamily: effectiveFont,
+      fontSize: selectedFontSize,
+      textStyle: selectedTextStyle,
+      contentType,
+      useSvgBackground,
+      svgFrameId: useSvgBackground ? svgFrameId : undefined,
+      backgroundImageUrl,
+      margins: selectedMargins,
+      itemSpacing: selectedItemSpacing,
+      lineSpacing: selectedLineSpacing,
+      checklistSort: selectedChecklistSort,
+      checklistTextMode: selectedChecklistTextMode,
+    };
+    onSaveAsStickieStyle?.(style);
+    // The note's current styling *is* this new style by definition — mark
+    // it in-use immediately (same snapshot shape applyStickieStyle sets)
+    // and flip the toggle on so "Apply style" reflects reality right away
+    // instead of showing its off/placeholder state right after a save.
+    setAppliedStickieStyleSnapshot({
+      id: style.id,
+      name: style.name,
+      color: style.color,
+      textColor: style.textColor,
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      textStyle: style.textStyle,
+      useSvgBackground: style.useSvgBackground,
+      svgFrameId: style.useSvgBackground ? style.svgFrameId : undefined,
+      backgroundImageUrl: style.backgroundImageUrl || '',
+      margins: style.margins || DEFAULT_MARGINS,
+      itemSpacing: style.itemSpacing || DEFAULT_ITEM_SPACING,
+      lineSpacing: style.lineSpacing ?? DEFAULT_LINE_SPACING,
+      checklistSort: style.checklistSort || 'as-is',
+      checklistTextMode: style.checklistTextMode || 'single',
+    });
+    setUseStickieStyleToggle(true);
+    setShowSaveStyleNameModal(false);
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  // True once anything's actually happening that needs the smaller
+  // footprint — typing (keyboard up) or the styling bar open. viewOnly
+  // never shrinks (it has no keyboard or styling bar of its own); every
+  // other mode — including styleEditorMode, which forces showStyling true
+  // for its whole lifetime via the effect above — sizes off this flag.
+  const isCompactSize = showStyling || isKeyboardVisible;
+  const cardWidth = viewOnly ? IDLE_WIDTH : (isCompactSize ? MODAL_WIDTH : IDLE_WIDTH);
+  const cardHeight = viewOnly ? IDLE_HEIGHT : (isCompactSize ? MODAL_HEIGHT : IDLE_HEIGHT);
+  // Space reserved below the centering row — the styling bottom sheet's
+  // own height while it's open, or the keyboard's real measured height
+  // while it's up (see the keyboardHeight listener above). The two never
+  // overlap in practice (opening the styling bar dismisses the keyboard —
+  // see the effect above), so only one is ever non-zero at a time. Using
+  // the keyboard's actual height here — rather than KeyboardAvoidingView's
+  // generic screen-wide padding — is what lets the card center itself
+  // within whatever room is genuinely left above the keyboard instead of
+  // just being pushed upward by a fixed amount.
+  const reservedBottomSpace = showStyling ? STYLING_BAR_HEIGHT : keyboardHeight;
+
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={() => {}}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        enabled={Platform.OS === 'ios'}
+        behavior={undefined}
+        enabled={false}
         style={{ flex: 1 }}
       >
         {/* Screen-level swipe — enabled any time the modal is open with no
@@ -819,9 +1025,12 @@ const NoteModal = ({
             fall through to whatever is behind the modal. */}
         <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={() => {}} />
 
-        {/* Note card — 50% height; when styling open, centers within the top 3/4 above the bar */}
+        {/* Note card — idle at IDLE_WIDTH/HEIGHT (matches ReadOnlyModal);
+            shrinks to the compact MODAL_WIDTH/HEIGHT the moment the
+            keyboard or styling bar takes over the bottom of the screen,
+            and centers in whatever's left above reservedBottomSpace. */}
         <View
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: showStyling ? STYLING_BAR_HEIGHT : keyboardCenteringOffset }}
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: reservedBottomSpace }}
           pointerEvents="box-none"
         >
           <NeuView isDark={isDark}
@@ -854,7 +1063,49 @@ const NoteModal = ({
 
             {/* Header */}
             <View style={s.topToolbar}>
-              <Text style={s.headerLabel} numberOfLines={1}>{tabName}</Text>
+              {canPickOwnerTab ? (
+                <View style={{ position: 'relative', flex: 1 }}>
+                  <TouchableOpacity
+                    style={s.tabTrigger}
+                    onPress={() => setShowTabDropdown(v => !v)}
+                    activeOpacity={0.75}
+                    hitSlop={{ top: 8, bottom: 8, right: 8 }}
+                  >
+                    <Text style={s.tabTriggerText} numberOfLines={1}>{displayedTabName}</Text>
+                    <Text style={s.tabTriggerChevron}>{showTabDropdown ? '▲' : '▼'}</Text>
+                  </TouchableOpacity>
+
+                  {showTabDropdown && (
+                    <View style={s.tabDropdownWrap}>
+                      <View style={s.tabDropdownList}>
+                        <ScrollView style={{ maxHeight: 168 }} nestedScrollEnabled showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                          {ownerTabOptions.map(t => (
+                            <TouchableOpacity
+                              key={t.id}
+                              style={s.tabDropdownItem}
+                              onPress={() => {
+                                onTabIdChange!(t.id);
+                                setShowTabDropdown(false);
+                              }}
+                            >
+                              <View style={[s.tabDropdownSwatch, { backgroundColor: t.color }]} />
+                              <Text
+                                style={[s.tabDropdownText, t.id === selectedTabId && s.tabDropdownTextActive]}
+                                numberOfLines={1}
+                              >
+                                {t.name}
+                              </Text>
+                              {t.id === selectedTabId && <Text style={s.tabDropdownCheck}>✓</Text>}
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <Text style={s.headerLabel} numberOfLines={1}>{tabName}</Text>
+              )}
               {viewOnly ? (
                 <TouchableOpacity
                   onPress={onCancel}
@@ -1052,7 +1303,8 @@ const NoteModal = ({
                       placeholderTextColor="#AEAEB2"
                       multiline
                       value={typeof content === 'string' ? content : ''}
-                      onChangeText={onContentChange}
+                      onChangeText={handleTextContentChange}
+                      onKeyPress={handleTextContentKeyPress}
                       textAlignVertical="top"
                       autoFocus={!isReadOnlyContent}
                       underlineColorAndroid="transparent"
@@ -1174,23 +1426,12 @@ const NoteModal = ({
                           activeOpacity={0.8}
                         >
                           <Text style={[barStyles.stickieStyleTriggerText, { color: p.textPrimary }]} numberOfLines={1}>
-                            Apply style
+                            {appliedStickieStyleSnapshot ? appliedStickieStyleSnapshot.name : 'Apply style'}
                           </Text>
                           <Text style={[barStyles.dropdownArrow, { color: p.textSecondary }]}>{showStyleDropdown ? '▲' : '▼'}</Text>
                         </TouchableOpacity>
                       </NeuView>
                     </View>
-                    {!!stickieStyleStatusLabel && (
-                      <Text
-                        style={[
-                          barStyles.stickieStyleStatusLabel,
-                          { color: stickieStyleIsExactMatch ? NEU_ACCENT : p.textSecondary },
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {stickieStyleStatusLabel}
-                      </Text>
-                    )}
                     {showStyleDropdown && (
                       <View style={[barStyles.stickieStyleOptionsFloatWrap, { top: stickieStyleTriggerHeight + 6 }]}>
                         <NeuView isDark={isDark} radius={9} style={barStyles.stickieStyleOptionsFloat}>
@@ -1200,18 +1441,29 @@ const NoteModal = ({
                             showsVerticalScrollIndicator={false}
                             keyboardShouldPersistTaps="handled"
                           >
-                            {stickieStyles.map(style => (
-                              <TouchableOpacity
-                                key={style.id}
-                                style={[barStyles.stickieStyleOptionRow, { borderColor: `${p.darkShadow}40` }]}
-                                onPress={() => applyStickieStyle(style)}
-                              >
-                                <View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: style.color }} />
-                                <Text style={[barStyles.stickieStyleOptionText, { color: p.textPrimary }]} numberOfLines={1}>
-                                  {style.name}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
+                            {stickieStyles.map(style => {
+                              const inUse = appliedStickieStyleSnapshot?.id === style.id;
+                              return (
+                                <TouchableOpacity
+                                  key={style.id}
+                                  style={[barStyles.stickieStyleOptionRow, { borderColor: `${p.darkShadow}40` }]}
+                                  onPress={() => applyStickieStyle(style)}
+                                >
+                                  <View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: style.color }} />
+                                  <Text
+                                    style={[
+                                      barStyles.stickieStyleOptionText,
+                                      { color: p.textPrimary },
+                                      inUse && barStyles.stickieStyleOptionTextActive,
+                                    ]}
+                                    numberOfLines={1}
+                                  >
+                                    {style.name}
+                                  </Text>
+                                  {inUse && <Text style={barStyles.stickieStyleOptionCheck}>✓</Text>}
+                                </TouchableOpacity>
+                              );
+                            })}
                           </ScrollView>
                         </NeuView>
                       </View>
@@ -1236,10 +1488,22 @@ const NoteModal = ({
                     </Text>
                     <NeuToggle
                       value={useStickieStyleToggle}
-                      onValueChange={handleStickieStyleToggleChange}
+                      onValueChange={(v) => {
+                        setUseStickieStyleToggle(v);
+                        if (!v) setAppliedStickieStyleSnapshot(null);
+                      }}
                       isDark={isDark}
                     />
                   </View>
+                )}
+                {canSaveAsStickieStyle && (
+                  <TouchableOpacity
+                    style={[barStyles.saveStyleButton, { borderColor: NEU_ACCENT }]}
+                    activeOpacity={0.8}
+                    onPress={() => setShowSaveStyleNameModal(true)}
+                  >
+                    <Text style={barStyles.saveStyleButtonText} numberOfLines={1}>+ Save as StickieStyle</Text>
+                  </TouchableOpacity>
                 )}
                 <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Type</Text>
 
@@ -1788,6 +2052,16 @@ const NoteModal = ({
           }}
         />
 
+        {/* "Save as StickieStyle" naming step — same modal Settings' own
+            Add New/Edit Current flow uses (see
+            components/StickieStyleSection.tsx). */}
+        <StickieStyleNameModal
+          visible={showSaveStyleNameModal}
+          isDark={isDark}
+          onCancel={() => setShowSaveStyleNameModal(false)}
+          onSave={handleSaveAsStickieStyleName}
+        />
+
         </SwipeToAction>
 
       </KeyboardAvoidingView>
@@ -1820,6 +2094,52 @@ const s = StyleSheet.create({
     paddingBottom: 12,
   },
   headerLabel: { fontSize: 18, fontWeight: '600', color: '#8E8E93', flex: 1 },
+  // Owner-tab dropdown trigger — same font size/weight as the old plain
+  // headerLabel so swapping one for the other doesn't shift the header's
+  // overall height, just adds the chevron.
+  tabTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    maxWidth: '90%',
+  },
+  tabTriggerText: { fontSize: 18, fontWeight: '600', color: '#8E8E93' },
+  tabTriggerChevron: { fontSize: 11, fontWeight: '700', color: '#8E8E93' },
+  // Floats below the trigger rather than pushing the header taller — the
+  // card's own overflow:hidden (see `card` below) still clips it if the
+  // list runs past the card's bottom edge, which is why the list itself is
+  // capped at maxHeight 168 with its own scroll instead of growing freely.
+  tabDropdownWrap: {
+    position: 'absolute',
+    top: 32,
+    left: 0,
+    width: 190,
+    zIndex: 40,
+  },
+  tabDropdownList: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  tabDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5EA',
+  },
+  tabDropdownSwatch: { width: 12, height: 12, borderRadius: 3 },
+  tabDropdownText: { fontSize: 13.5, color: '#3A3A3C', flex: 1 },
+  tabDropdownTextActive: { color: '#F5A623', fontWeight: '700' },
+  tabDropdownCheck: { fontSize: 12, fontWeight: '700', color: '#F5A623' },
   arrowIconV: {
     fontSize: 16, fontWeight: '600', color: '#000000',
     transform: [{ scaleX: 1.3 }],
@@ -1991,11 +2311,14 @@ const barStyles = StyleSheet.create({
     fontSize: 11.5,
     flex: 1,
   },
-  stickieStyleStatusLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 8,
-    lineHeight: 13,
+  stickieStyleOptionTextActive: {
+    color: NEU_ACCENT,
+    fontWeight: '700',
+  },
+  stickieStyleOptionCheck: {
+    color: NEU_ACCENT,
+    fontSize: 12,
+    fontWeight: '700',
   },
   stickieToggleRow: {
     flexDirection: 'row',
@@ -2008,6 +2331,24 @@ const barStyles = StyleSheet.create({
     fontWeight: '600',
     flexShrink: 1,
     marginRight: 6,
+  },
+  // "Save as StickieStyle" — dashed accent-outline pill, same visual family
+  // as StickieStyleSection's own "+ Add New" affordance but flatter (no
+  // solid fill) so it reads as a secondary action next to the Type chips
+  // rather than competing with them.
+  saveStyleButton: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderRadius: 9,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    marginBottom: 11,
+  },
+  saveStyleButtonText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: NEU_ACCENT,
   },
   dotsRow: {
     flexDirection: 'row',

@@ -18,6 +18,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 import { NeuView, NeuPressable, NeuToggle, NeuRadio } from '../components/Neumorphic';
+import { resolveDefaultTabId } from '../utils/tabDefaults';
 import PinSetupModal from '../components/PinSetupModal';
 import StickieStyleSection from '../components/StickieStyleSection';
 import AllTabFilterSection from '../components/AllTabFilterSection';
@@ -77,7 +78,7 @@ const SettingsModal = ({
   const effectiveDefaultFont = settings.defaultFont || FONTS[0].value;
   const effectiveDefaultColor = settings.defaultColor || COLORS[0];
   const effectiveDefaultTextColor = settings.defaultTextColor || TEXT_COLORS[0];
-  const effectiveDefaultTabId = settings.defaultTabId || tabs[0]?.id;
+  const effectiveDefaultTabId = resolveDefaultTabId(settings.defaultTabId, tabs, settings.showAllTab);
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 

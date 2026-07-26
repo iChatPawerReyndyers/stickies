@@ -102,7 +102,7 @@ const PinSetupModal: React.FC<PinSetupModalProps> = ({
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
-        <NeuView isDark={isDark} radius={NEU_RADIUS.xl} style={{ width: 320, paddingVertical: 24, paddingHorizontal: 20, alignItems: 'center' }}>
+        <NeuView isDark={isDark} radius={NEU_RADIUS.xl} noShadow style={{ width: 320, paddingVertical: 24, paddingHorizontal: 20, alignItems: 'center' }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: p.textPrimary, marginBottom: 4 }}>{title}</Text>
           <Text style={{ fontSize: 12, color: error ? NEU_DANGER : p.textSecondary, height: 16 }}>
             {error || ' '}
