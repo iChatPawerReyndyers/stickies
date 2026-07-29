@@ -5,6 +5,7 @@ import styles from '../styles';
 import { NeuPressable } from '../components/Neumorphic';
 import { resolveFontStyle } from '../utils/fontResolver';
 import { getNeuPalette, NEU_ACCENT, NEU_DANGER, NEU_RADIUS } from '../theme/neumorphic';
+import RichText from '../components/RichText';
 
 // Fixed bottom padding baked into styles.modalContent — subtracted below so
 // the computed scroll-area height matches the actual space left over after
@@ -73,7 +74,7 @@ const ReadOnlyModal = ({ visible, note, onClose, onRestore, onDeleteForever, isD
     const textStyle = getTextStyle();
 
     if (note.contentType === 'text') {
-      return <Text style={[styles.readOnlyContent, textStyle]}>{note.content as string}</Text>;
+      return <RichText text={note.content as string} style={[styles.readOnlyContent, textStyle]} />;
     }
 
     // item[0] is the title row — already shown as note.title above, so start from index 1.
@@ -84,7 +85,7 @@ const ReadOnlyModal = ({ visible, note, onClose, onRestore, onDeleteForever, isD
             key={item.id}
             style={[styles.readOnlyContent, textStyle, item.completed && { textDecorationLine: 'line-through', opacity: 0.5 }]}
           >
-            {item.completed ? '✓' : '○'} {item.text}
+            {item.completed ? '✓' : '○'} <RichText text={item.text} style={[styles.readOnlyContent, textStyle, { marginBottom: 0 }]} />
           </Text>
         ))}
       </View>
@@ -166,7 +167,7 @@ const ReadOnlyModal = ({ visible, note, onClose, onRestore, onDeleteForever, isD
             nestedScrollEnabled
             scrollEnabled
           >
-            <Text style={[styles.label, getTextStyle(), { fontWeight: '700' }]}>{note.title}</Text>
+            <RichText text={note.title} style={[styles.label, getTextStyle(), { fontWeight: '700' }]} />
             {renderContent()}
           </ScrollView>
         </View>

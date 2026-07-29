@@ -8,6 +8,7 @@ import { NEU_RADIUS } from '../theme/neumorphic';
 import { resolveImageUrl } from '../utils/googleDriveImage';
 import { resolveFontStyle } from '../utils/fontResolver';
 import CheckboxIcon from '../components/CheckboxIcon';
+import RichText from '../components/RichText';
 
 type NoteCardProps = {
   note: Note;
@@ -86,13 +87,12 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
       const lineHeightPx = 8 + lineSpacing * 0.34;
       const maxLines = Math.max(1, Math.floor(availableHeight / lineHeightPx));
       return (
-        <Text
+        <RichText
+          text={note.content as string}
           style={[styles.cardPreview, textStyle, { lineHeight: lineHeightPx }]}
           numberOfLines={maxLines}
           ellipsizeMode="tail"
-        >
-          {note.content as string}
-        </Text>
+        />
       );
     }
 
@@ -129,12 +129,11 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
     return (
       <View>
         {titleItem?.text ? (
-          <Text
+          <RichText
+            text={titleItem.text}
             style={[styles.cardPreview, getTitleTextStyle(), { marginBottom: 3 }]}
             numberOfLines={1}
-          >
-            {titleItem.text}
-          </Text>
+          />
         ) : null}
         {visibleItems.map((item: any) => (
           <View key={item.id} style={[{ flexDirection: 'row', alignItems: note.checklistTextMode === 'wrap' ? 'flex-start' : 'center' }, rowSpacingStyle]}>
@@ -149,16 +148,15 @@ const NoteCard = ({ note, onEdit, onDelete, onLongPress, cardSize: propCardSize,
             }}>
               <CheckboxIcon checked={item.completed} size={CARD_CHECKBOX_SIZE} />
             </View>
-            <Text
+            <RichText
+              text={item.text}
               style={[
                 styles.cardPreview,
                 textStyle,
                 item.completed && { textDecorationLine: 'line-through', opacity: 0.5 },
               ]}
               numberOfLines={note.checklistTextMode === 'wrap' ? 3 : 1}
-            >
-              {item.text}
-            </Text>
+            />
           </View>
         ))}
         {hasOverflow && (

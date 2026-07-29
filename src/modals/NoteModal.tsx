@@ -33,6 +33,9 @@ import { XIcon } from '../../assets/XIcon';
 // (`npm install @react-native-clipboard/clipboard`) and run a native
 // rebuild (pod install on iOS) since it includes native modules.
 import Clipboard from '@react-native-clipboard/clipboard';
+import RichText from '../components/RichText';
+import TextSelectionToolbar from '../components/TextSelectionToolbar';
+import { toggleMarkerOnSelection, MarkerKind } from '../utils/richText';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
@@ -147,6 +150,12 @@ const TAB_DROPDOWN_EXCLUDED_IDS = new Set(['all', 'archived', 'trash']);
 type NoteModalProps = {
   visible: boolean;
   tabName: string;
+  // Identifies which note this is, so the undo/redo history (see the
+  // "Undo/redo" section below) can be kept per-note and survive closing
+  // and reopening the editor. undefined for a brand-new, not-yet-saved
+  // note — that case always starts with fresh (session-only) history,
+  // since there's no stable id to key persisted history against yet.
+  noteId?: string;
   // Follows the app's Theme setting for all chrome outside the note's own
   // colored card — the styling bar, footer, discard dialog, etc. The note
   // card itself keeps rendering in the note's own chosen color regardless
@@ -285,6 +294,11 @@ interface AppliedStyleSnapshot {
   checklistTextMode: ChecklistTextMode;
 }
 
+// Same shape as AppliedStyleSnapshot minus id/name — it's not describing a
+// saved StickieStyle, just a point-in-time capture of the note's own live
+// styling fields (see preStickieStyleFields below).
+type StyleFieldsSnapshot = Omit<AppliedStyleSnapshot, 'id' | 'name'>;
+
 interface StylingSnapshot {
   contentType: ContentType;
   content: string | ChecklistItem[];
@@ -309,6 +323,7 @@ interface StylingSnapshot {
 
 const NoteModal = ({
   visible, tabName,
+  noteId,
   isDark = false,
   contentType, onContentTypeChange,
   content, onContentChange,
@@ -371,6 +386,12 @@ const NoteModal = ({
   // duplicate it) or has changed something since (button shown — they're
   // using it "as inspo").
   const [appliedStickieStyleSnapshot, setAppliedStickieStyleSnapshot] = useState<AppliedStyleSnapshot | null>(null);
+  // Captured once, the moment useStickieStyleToggle flips from off to on —
+  // the note's own live styling fields *before* any StickieStyle gets
+  // applied this session. Turning the toggle back off restores exactly
+  // this, regardless of how many different styles were tried via the
+  // dropdown in between (see handleUseStickieStyleToggleChange below).
+  const [preStickieStyleFields, setPreStickieStyleFields] = useState<StyleFieldsSnapshot | null>(null);
   // Naming modal for "Save as StickieStyle" — same StickieStyleNameModal
   // Settings' own Add New/Edit Current flow uses.
   const [showSaveStyleNameModal, setShowSaveStyleNameModal] = useState(false);
@@ -513,6 +534,7 @@ const NoteModal = ({
       setShowTabDropdown(false);
       setUseStickieStyleToggle(false);
       setAppliedStickieStyleSnapshot(null);
+      setPreStickieStyleFields(null);
       setShowSaveStyleNameModal(false);
       setStylingSnapshot(null);
       setEditingItemId(null);
@@ -629,6 +651,170 @@ const NoteModal = ({
     }
   }, [contentType]);
 
+  // ── Undo/redo (content only) ─────────────────────────────────────────────────
+  //
+  // Scope: text/checklist content only — not styling, not tab/grid
+  // placement. History is kept per-note (keyed by noteId) in a ref, so it
+  // survives this same NoteModal instance being reused for a different note
+  // and then reopened for this one again (MainScreen renders one NoteModal
+  // and just toggles its `visible`/content props rather than
+  // mounting/unmounting it — see the ref below). A brand-new, unsaved note
+  // (noteId undefined) always starts fresh each time, since there's no
+  // stable id to persist against yet.
+  //
+  // Rapid typing coalesces into one undo step per word/line (a step only
+  // commits when the character that was just typed is whitespace or
+  // sentence punctuation, or when the edit isn't a simple single-character
+  // append/removal at all — e.g. a paste). Checklist edits use the same
+  // rule per-item; adding/deleting/reordering/checking an item is always
+  // its own immediate step since those are already discrete actions, not
+  // continuous typing.
+  type ContentSnapshot = { contentType: ContentType; content: string | ChecklistItem[] };
+  type ContentHistoryState = { entries: ContentSnapshot[]; index: number };
+
+  const contentHistoryStoreRef = useRef<Record<string, ContentHistoryState>>({});
+  // Mutating contentHistoryStoreRef.current doesn't itself trigger a
+  // re-render — bumping this after every meaningful mutation is what makes
+  // the Undo/Redo buttons' enabled state actually refresh, rather than
+  // lagging a keystroke behind whatever the ref currently holds.
+  const [, bumpHistoryVersion] = useState(0);
+  const lastRecordedSnapshotRef = useRef<ContentSnapshot | null>(null);
+  // Set right before an undo/redo action calls onContentTypeChange/
+  // onContentChange, so the recording effect below recognizes the resulting
+  // prop update as coming from us (and skips it) rather than as a new edit
+  // to record. Relies on React batching both calls into a single commit —
+  // same assumption discardStyling's own restore block above already makes
+  // ("Batch all restores in the same event handler so useEffect sees
+  // consistent state").
+  const isApplyingContentHistoryRef = useRef(false);
+
+  const historyKey = noteId || '__new_note__';
+
+  const contentSnapshotsEqual = (a: ContentSnapshot, b: ContentSnapshot): boolean => {
+    if (a.contentType !== b.contentType) return false;
+    if (typeof a.content === 'string' || typeof b.content === 'string') return a.content === b.content;
+    const aItems = a.content, bItems = b.content;
+    if (aItems.length !== bItems.length) return false;
+    return aItems.every((item, i) => item.id === bItems[i].id && item.text === bItems[i].text && item.completed === bItems[i].completed);
+  };
+
+  const isBoundaryChar = (ch: string) => /[\s.,!?;:]/.test(ch);
+
+  // 'continue' = coalesce into the in-progress burst (don't commit a new
+  // step yet); 'commit' = this edit ends a burst (or isn't a burst at all,
+  // e.g. a paste) and becomes its own step; 'none' = no real change.
+  const classifyContentEdit = (prev: ContentSnapshot, next: ContentSnapshot): 'continue' | 'commit' | 'none' => {
+    if (prev.contentType !== next.contentType) return 'commit';
+
+    const classifyText = (prevText: string, nextText: string): 'continue' | 'commit' | 'none' => {
+      if (prevText === nextText) return 'none';
+      if (nextText.length === prevText.length + 1 && nextText.startsWith(prevText)) {
+        return isBoundaryChar(nextText[nextText.length - 1]) ? 'commit' : 'continue';
+      }
+      if (nextText.length === prevText.length - 1 && prevText.startsWith(nextText)) return 'continue';
+      return 'commit';
+    };
+
+    if (typeof next.content === 'string') {
+      return classifyText(typeof prev.content === 'string' ? prev.content : '', next.content);
+    }
+
+    const prevItems = Array.isArray(prev.content) ? prev.content : [];
+    const nextItems = next.content;
+    if (prevItems.length !== nextItems.length) return 'commit';
+    let diffIndex = -1;
+    for (let i = 0; i < nextItems.length; i++) {
+      const a = prevItems[i], b = nextItems[i];
+      if (!a || a.id !== b.id || a.completed !== b.completed) return 'commit';
+      if (a.text !== b.text) {
+        if (diffIndex !== -1) return 'commit'; // more than one item changed at once
+        diffIndex = i;
+      }
+    }
+    if (diffIndex === -1) return 'none';
+    return classifyText(prevItems[diffIndex].text, nextItems[diffIndex].text);
+  };
+
+  // (Re)seeds this note's history on open. Reuses whatever's already
+  // stored for this noteId if it's still consistent with the content the
+  // modal is actually opening with — that's what makes history survive a
+  // normal close/reopen. If they've drifted apart (e.g. the last session's
+  // edits were never saved and the note reverted), starts fresh instead of
+  // offering undo/redo steps that no longer correspond to anything real.
+  useEffect(() => {
+    if (!visible) return;
+    const current: ContentSnapshot = { contentType, content };
+    const existing = contentHistoryStoreRef.current[historyKey];
+    if (!noteId || !existing || !contentSnapshotsEqual(existing.entries[existing.index], current)) {
+      contentHistoryStoreRef.current[historyKey] = { entries: [current], index: 0 };
+    }
+    const seeded = contentHistoryStoreRef.current[historyKey];
+    lastRecordedSnapshotRef.current = seeded.entries[seeded.index];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  // Records every real content/contentType change into this note's history
+  // — either coalesced into the current in-progress step or committed as a
+  // new one (see classifyContentEdit above).
+  useEffect(() => {
+    if (!visible) return;
+    if (isApplyingContentHistoryRef.current) {
+      isApplyingContentHistoryRef.current = false;
+      return;
+    }
+    const hist = contentHistoryStoreRef.current[historyKey];
+    if (!hist) return;
+    const prev = lastRecordedSnapshotRef.current;
+    const next: ContentSnapshot = { contentType, content };
+    if (!prev) {
+      lastRecordedSnapshotRef.current = next;
+      return;
+    }
+    const verdict = classifyContentEdit(prev, next);
+    if (verdict === 'none') return;
+    if (verdict === 'continue' && hist.index === hist.entries.length - 1) {
+      hist.entries[hist.index] = next;
+    } else {
+      hist.entries = hist.entries.slice(0, hist.index + 1);
+      hist.entries.push(next);
+      hist.index += 1;
+      // Only a 'commit' actually moves hist.index (a 'continue' just
+      // replaces the in-progress entry in place), so only a commit can
+      // change what canUndo/canRedo should show — that's the only case
+      // that needs a forced refresh.
+      bumpHistoryVersion(v => v + 1);
+    }
+    lastRecordedSnapshotRef.current = next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, contentType]);
+
+  const canUndoContent = (contentHistoryStoreRef.current[historyKey]?.index ?? 0) > 0;
+  const canRedoContent = (() => {
+    const hist = contentHistoryStoreRef.current[historyKey];
+    return !!hist && hist.index < hist.entries.length - 1;
+  })();
+
+  const applyContentHistoryEntry = (snap: ContentSnapshot) => {
+    isApplyingContentHistoryRef.current = true;
+    lastRecordedSnapshotRef.current = snap;
+    onContentTypeChange(snap.contentType);
+    onContentChange(snap.content);
+  };
+
+  const handleUndoContent = () => {
+    const hist = contentHistoryStoreRef.current[historyKey];
+    if (!hist || hist.index <= 0) return;
+    hist.index -= 1;
+    applyContentHistoryEntry(hist.entries[hist.index]);
+  };
+
+  const handleRedoContent = () => {
+    const hist = contentHistoryStoreRef.current[historyKey];
+    if (!hist || hist.index >= hist.entries.length - 1) return;
+    hist.index += 1;
+    applyContentHistoryEntry(hist.entries[hist.index]);
+  };
+
   // ── Checklist helpers ────────────────────────────────────────────────────────
 
   const addItemAfter = (id: string) => {
@@ -693,6 +879,106 @@ const NoteModal = ({
   const displayedChecklistItems: ChecklistItem[] = (
     [items[0], ...sortItems(items.slice(1))]
   ).filter(Boolean) as ChecklistItem[];
+
+  // ── Custom text-selection toolbar state ──────────────────────────────────────
+  //
+  // "Active" tracks whichever single editable field currently has focus —
+  // the text-note TextInput, or one specific checklist item's TextInput
+  // (title row included, it's items[0] like any other item). Only one of
+  // these can realistically be focused at a time, so one shared piece of
+  // state is enough instead of duplicating it per-field.
+  //
+  // NOTE: placed here (rather than up with the modal's other useState calls)
+  // deliberately — it needs `items`/`updateItem`/`isReadOnlyContent` to
+  // already be defined, and those are declared further down this same
+  // function body. That's still perfectly valid for React's rules of hooks
+  // (the useState calls below are unconditional and run in the same order
+  // every render, which is all React requires) — it just means this block
+  // has to sit after its own dependencies rather than up top with the rest
+  // of the state.
+  type SelectionTarget = { kind: 'text' } | { kind: 'checklist'; itemId: string };
+  const [activeSelectionTarget, setActiveSelectionTarget] = useState<SelectionTarget | null>(null);
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  // Only set for exactly one render right after a toolbar action changes the
+  // text — passed to the focused TextInput's `selection` prop so the native
+  // side re-lands the cursor/selection where the action left it, then
+  // cleared back to undefined (see onSelectionChangeFor below) so normal
+  // typing goes back to fully native/uncontrolled selection behavior.
+  const [forcedSelectionRange, setForcedSelectionRange] = useState<{ start: number; end: number } | undefined>(undefined);
+
+  const showSelectionToolbar =
+    !!activeSelectionTarget && selectionRange.end > selectionRange.start && !isReadOnlyContent && !showStyling;
+
+  const getActiveSelectionText = (): string => {
+    if (!activeSelectionTarget) return '';
+    if (activeSelectionTarget.kind === 'text') return typeof content === 'string' ? content : '';
+    return items.find(i => i.id === activeSelectionTarget.itemId)?.text || '';
+  };
+
+  const applyActiveSelectionText = (newText: string, newStart: number, newEnd: number) => {
+    if (!activeSelectionTarget) return;
+    if (activeSelectionTarget.kind === 'text') {
+      onContentChange(newText);
+    } else {
+      updateItem(activeSelectionTarget.itemId, newText);
+    }
+    setSelectionRange({ start: newStart, end: newEnd });
+    setForcedSelectionRange({ start: newStart, end: newEnd });
+  };
+
+  const onSelectionChangeFor = (target: SelectionTarget) => (e: { nativeEvent: { selection: { start: number; end: number } } }) => {
+    setActiveSelectionTarget(target);
+    setSelectionRange(e.nativeEvent.selection);
+    if (forcedSelectionRange) setForcedSelectionRange(undefined);
+  };
+
+  const onBlurClearSelectionFor = (target: SelectionTarget) => () => {
+    setActiveSelectionTarget(prev => {
+      const sameTarget =
+        prev &&
+        prev.kind === target.kind &&
+        (prev.kind !== 'checklist' || (target.kind === 'checklist' && prev.itemId === target.itemId));
+      if (!sameTarget) return prev;
+      setSelectionRange({ start: 0, end: 0 });
+      return null;
+    });
+  };
+
+  const handleToolbarMarker = (kind: MarkerKind) => {
+    const text = getActiveSelectionText();
+    const result = toggleMarkerOnSelection(text, selectionRange.start, selectionRange.end, kind);
+    applyActiveSelectionText(result.text, result.selectionStart, result.selectionEnd);
+  };
+
+  const handleToolbarCopy = async () => {
+    const text = getActiveSelectionText();
+    const selected = text.slice(selectionRange.start, selectionRange.end);
+    if (!selected) return;
+    try {
+      await Clipboard.setString(selected);
+    } catch {
+      // Clipboard write failed — no-op, same as elsewhere in this file.
+    }
+  };
+
+  const handleToolbarPaste = async () => {
+    try {
+      const clip = await Clipboard.getString();
+      if (!clip) return;
+      const text = getActiveSelectionText();
+      const newText = text.slice(0, selectionRange.start) + clip + text.slice(selectionRange.end);
+      const cursor = selectionRange.start + clip.length;
+      applyActiveSelectionText(newText, cursor, cursor);
+    } catch {
+      // Clipboard read failed — no-op.
+    }
+  };
+
+  const handleToolbarSelectAll = () => {
+    const text = getActiveSelectionText();
+    setSelectionRange({ start: 0, end: text.length });
+    setForcedSelectionRange({ start: 0, end: text.length });
+  };
 
   // ── Text-note list auto-continue ─────────────────────────────────────────────
   //
@@ -863,43 +1149,119 @@ const NoteModal = ({
     setShowStyling(false);
   };
 
+  // Point-in-time capture/restore of just the style-relevant fields (the
+  // same set a StickieStyle itself carries) — used to remember and later
+  // restore the note's own styling from before StickieStyle mode was
+  // turned on. Deliberately excludes contentType/content/colSpan/rowSpan,
+  // same as applyStickieStyle below never touching those.
+  const captureStyleFields = (): StyleFieldsSnapshot => ({
+    color: selectedColor,
+    textColor: selectedTextColor,
+    fontFamily: selectedFont,
+    fontSize: selectedFontSize,
+    textStyle: selectedTextStyle,
+    useSvgBackground,
+    svgFrameId,
+    backgroundImageUrl: backgroundImageUrl || '',
+    margins: selectedMargins,
+    itemSpacing: selectedItemSpacing,
+    lineSpacing: selectedLineSpacing,
+    checklistSort: selectedChecklistSort,
+    checklistTextMode: selectedChecklistTextMode,
+  });
+
+  // Same defaulting rules applyStickieStyle already applies when copying a
+  // saved StickieStyle onto the note — kept as one function so a style's
+  // fields are normalized identically whether they're being applied or
+  // just compared against.
+  const styleToFields = (style: StickieStyle): StyleFieldsSnapshot => ({
+    color: style.color,
+    textColor: style.textColor,
+    fontFamily: style.fontFamily,
+    fontSize: style.fontSize,
+    textStyle: style.textStyle,
+    useSvgBackground: style.useSvgBackground,
+    svgFrameId: style.useSvgBackground ? style.svgFrameId : undefined,
+    backgroundImageUrl: style.backgroundImageUrl || '',
+    margins: style.margins || DEFAULT_MARGINS,
+    itemSpacing: style.itemSpacing || DEFAULT_ITEM_SPACING,
+    lineSpacing: style.lineSpacing ?? DEFAULT_LINE_SPACING,
+    checklistSort: style.checklistSort || 'as-is',
+    checklistTextMode: style.checklistTextMode || 'single',
+  });
+
+  const styleFieldsEqual = (a: StyleFieldsSnapshot, b: StyleFieldsSnapshot): boolean =>
+    a.color === b.color &&
+    a.textColor === b.textColor &&
+    a.fontFamily === b.fontFamily &&
+    a.fontSize === b.fontSize &&
+    a.textStyle === b.textStyle &&
+    a.useSvgBackground === b.useSvgBackground &&
+    (a.svgFrameId || undefined) === (b.svgFrameId || undefined) &&
+    a.backgroundImageUrl === b.backgroundImageUrl &&
+    a.margins.top === b.margins.top &&
+    a.margins.bottom === b.margins.bottom &&
+    a.margins.left === b.margins.left &&
+    a.margins.right === b.margins.right &&
+    a.itemSpacing.top === b.itemSpacing.top &&
+    a.itemSpacing.bottom === b.itemSpacing.bottom &&
+    a.lineSpacing === b.lineSpacing &&
+    a.checklistSort === b.checklistSort &&
+    a.checklistTextMode === b.checklistTextMode;
+
+  const restoreStyleFields = (snap: StyleFieldsSnapshot) => {
+    onColorChange(snap.color);
+    onTextColorChange(snap.textColor);
+    onFontChange(snap.fontFamily);
+    onFontSizeChange(snap.fontSize);
+    onTextStyleChange(snap.textStyle);
+    onUseSvgBackgroundChange(snap.useSvgBackground);
+    onSvgFrameIdChange?.(snap.useSvgBackground ? snap.svgFrameId : undefined);
+    onBackgroundImageUrlChange?.(snap.backgroundImageUrl);
+    onMarginsChange(snap.margins);
+    onItemSpacingChange(snap.itemSpacing);
+    onLineSpacingChange(snap.lineSpacing);
+    onChecklistSortChange(snap.checklistSort);
+    onChecklistTextModeChange(snap.checklistTextMode);
+  };
+
+  // Wired to the "Use StickieStyle" toggle below. Turning it ON captures
+  // the note's current styling as the restore point; turning it OFF puts
+  // that exact styling back, regardless of how many different saved
+  // styles were tried via the dropdown while it was on.
+  const handleUseStickieStyleToggleChange = (value: boolean) => {
+    if (value) {
+      setPreStickieStyleFields(captureStyleFields());
+    } else {
+      if (preStickieStyleFields) restoreStyleFields(preStickieStyleFields);
+      setPreStickieStyleFields(null);
+      setAppliedStickieStyleSnapshot(null);
+    }
+    setUseStickieStyleToggle(value);
+  };
+
   // Applies a saved StickieStyle's fields onto the note currently being
   // created/edited. Deliberately leaves contentType/content untouched — a
   // saved style describes look, not the note's own text/checklist content,
   // so applying one never disturbs what's already been typed.
   const applyStickieStyle = (style: StickieStyle) => {
-    onColorChange(style.color);
-    onTextColorChange(style.textColor);
-    onFontChange(style.fontFamily);
-    onFontSizeChange(style.fontSize);
-    onTextStyleChange(style.textStyle);
-    onUseSvgBackgroundChange(style.useSvgBackground);
+    const fields = styleToFields(style);
+    onColorChange(fields.color);
+    onTextColorChange(fields.textColor);
+    onFontChange(fields.fontFamily);
+    onFontSizeChange(fields.fontSize);
+    onTextStyleChange(fields.textStyle);
+    onUseSvgBackgroundChange(fields.useSvgBackground);
     // Called after onUseSvgBackgroundChange above so this specific frame id
     // wins over the random one MainScreen's own toggle handler assigns.
-    onSvgFrameIdChange?.(style.useSvgBackground ? style.svgFrameId : undefined);
-    onBackgroundImageUrlChange?.(style.backgroundImageUrl || '');
-    onMarginsChange(style.margins || DEFAULT_MARGINS);
-    onItemSpacingChange(style.itemSpacing || DEFAULT_ITEM_SPACING);
-    onLineSpacingChange(style.lineSpacing ?? DEFAULT_LINE_SPACING);
-    onChecklistSortChange(style.checklistSort || 'as-is');
-    onChecklistTextModeChange(style.checklistTextMode || 'single');
-    setAppliedStickieStyleSnapshot({
-      id: style.id,
-      name: style.name,
-      color: style.color,
-      textColor: style.textColor,
-      fontFamily: style.fontFamily,
-      fontSize: style.fontSize,
-      textStyle: style.textStyle,
-      useSvgBackground: style.useSvgBackground,
-      svgFrameId: style.useSvgBackground ? style.svgFrameId : undefined,
-      backgroundImageUrl: style.backgroundImageUrl || '',
-      margins: style.margins || DEFAULT_MARGINS,
-      itemSpacing: style.itemSpacing || DEFAULT_ITEM_SPACING,
-      lineSpacing: style.lineSpacing ?? DEFAULT_LINE_SPACING,
-      checklistSort: style.checklistSort || 'as-is',
-      checklistTextMode: style.checklistTextMode || 'single',
-    });
+    onSvgFrameIdChange?.(fields.svgFrameId);
+    onBackgroundImageUrlChange?.(fields.backgroundImageUrl);
+    onMarginsChange(fields.margins);
+    onItemSpacingChange(fields.itemSpacing);
+    onLineSpacingChange(fields.lineSpacing);
+    onChecklistSortChange(fields.checklistSort);
+    onChecklistTextModeChange(fields.checklistTextMode);
+    setAppliedStickieStyleSnapshot({ id: style.id, name: style.name, ...fields });
     setShowStyleDropdown(false);
   };
 
@@ -911,26 +1273,32 @@ const NoteModal = ({
   const isStyleUnchangedFromApplied = (): boolean => {
     const snap = appliedStickieStyleSnapshot;
     if (!snap) return false;
-    return (
-      snap.color === selectedColor &&
-      snap.textColor === selectedTextColor &&
-      snap.fontFamily === selectedFont &&
-      snap.fontSize === selectedFontSize &&
-      snap.textStyle === selectedTextStyle &&
-      snap.useSvgBackground === useSvgBackground &&
-      (snap.svgFrameId || undefined) === (svgFrameId || undefined) &&
-      snap.backgroundImageUrl === (backgroundImageUrl || '') &&
-      snap.margins.top === selectedMargins.top &&
-      snap.margins.bottom === selectedMargins.bottom &&
-      snap.margins.left === selectedMargins.left &&
-      snap.margins.right === selectedMargins.right &&
-      snap.itemSpacing.top === selectedItemSpacing.top &&
-      snap.itemSpacing.bottom === selectedItemSpacing.bottom &&
-      snap.lineSpacing === selectedLineSpacing &&
-      snap.checklistSort === selectedChecklistSort &&
-      snap.checklistTextMode === selectedChecklistTextMode
-    );
+    const { id, name, ...snapFields } = snap;
+    return styleFieldsEqual(snapFields, captureStyleFields());
   };
+
+  // Auto-detects whether the note's current styling — whatever it already
+  // is, whether from a previous session, from applying a style that then
+  // got edited elsewhere, or from having just matched one by coincidence —
+  // exactly matches one of the saved StickieStyles, and if so reflects that
+  // as "applied" (toggle on, status label showing) instead of requiring the
+  // person to have applied it via the dropdown *this session* for it to be
+  // recognized. Runs once each time the modal opens (the [visible]
+  // dependency), which is also what makes it survive close/reopen — e.g.
+  // saving a note's styling as a brand new StickieStyle, closing the
+  // editor, then reopening the same note later still shows it as applied,
+  // since the note's fields still match that style.
+  useEffect(() => {
+    if (!visible || viewOnly || styleEditorMode || stickieStyles.length === 0) return;
+    const fields = captureStyleFields();
+    const match = stickieStyles.find(style => styleFieldsEqual(fields, styleToFields(style)));
+    if (match) {
+      setAppliedStickieStyleSnapshot({ id: match.id, name: match.name, ...fields });
+      setPreStickieStyleFields(fields);
+      setUseStickieStyleToggle(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   // "Save as StickieStyle" button visibility — see the prop comment on
   // onSaveAsStickieStyle. Shown whenever the toggle is off, or it's on but
@@ -964,23 +1332,14 @@ const NoteModal = ({
     // it in-use immediately (same snapshot shape applyStickieStyle sets)
     // and flip the toggle on so "Apply style" reflects reality right away
     // instead of showing its off/placeholder state right after a save.
-    setAppliedStickieStyleSnapshot({
-      id: style.id,
-      name: style.name,
-      color: style.color,
-      textColor: style.textColor,
-      fontFamily: style.fontFamily,
-      fontSize: style.fontSize,
-      textStyle: style.textStyle,
-      useSvgBackground: style.useSvgBackground,
-      svgFrameId: style.useSvgBackground ? style.svgFrameId : undefined,
-      backgroundImageUrl: style.backgroundImageUrl || '',
-      margins: style.margins || DEFAULT_MARGINS,
-      itemSpacing: style.itemSpacing || DEFAULT_ITEM_SPACING,
-      lineSpacing: style.lineSpacing ?? DEFAULT_LINE_SPACING,
-      checklistSort: style.checklistSort || 'as-is',
-      checklistTextMode: style.checklistTextMode || 'single',
-    });
+    setAppliedStickieStyleSnapshot({ id: style.id, name: style.name, ...styleToFields(style) });
+    // Only set the restore baseline if StickieStyle mode wasn't already
+    // on this session — if it was (the person had already applied/tried a
+    // different saved style before saving this one), preStickieStyleFields
+    // still correctly points at the styling from *before any of that*
+    // started, and turning the toggle off later should go back to that,
+    // not to this just-saved state.
+    if (!preStickieStyleFields) setPreStickieStyleFields(captureStyleFields());
     setUseStickieStyleToggle(true);
     setShowSaveStyleNameModal(false);
   };
@@ -1114,16 +1473,36 @@ const NoteModal = ({
                 >
                   <Text style={s.closeIconX}>✕</Text>
                 </TouchableOpacity>
-              ) : styleEditorMode ? null : showStyling ? (
-                <View style={{ width: 24 }} />
-              ) : (
-                <TouchableOpacity
-                  onPress={openStyling}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Text style={s.arrowIconV}>v</Text>
-                </TouchableOpacity>
+              ) : styleEditorMode ? null : (
+                <View style={s.headerRightRow}>
+                  <TouchableOpacity
+                    onPress={handleUndoContent}
+                    disabled={!canUndoContent}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                  >
+                    <Text style={[s.undoRedoIcon, !canUndoContent && s.undoRedoIconDisabled]}>↺</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleRedoContent}
+                    disabled={!canRedoContent}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                  >
+                    <Text style={[s.undoRedoIcon, !canRedoContent && s.undoRedoIconDisabled]}>↻</Text>
+                  </TouchableOpacity>
+                  {showStyling ? (
+                    <View style={{ width: 24 }} />
+                  ) : (
+                    <TouchableOpacity
+                      onPress={openStyling}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={s.arrowIconV}>v</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
             </View>
 
@@ -1135,6 +1514,14 @@ const NoteModal = ({
                 SwipeToAction wrapper around the whole modal below), so
                 swiping works anywhere on screen, not just over this area. */}
             <View style={{ flex: 1, position: 'relative' }} pointerEvents={showStyling ? 'none' : 'auto'}>
+                {showSelectionToolbar && (
+                  <TextSelectionToolbar
+                    onMarker={handleToolbarMarker}
+                    onCopy={handleToolbarCopy}
+                    onPaste={handleToolbarPaste}
+                    onSelectAll={handleToolbarSelectAll}
+                  />
+                )}
                 {contentType === 'checklist' ? (
                 <ScrollView
                   ref={scrollRef}
@@ -1148,7 +1535,7 @@ const NoteModal = ({
                       if (index === 0) {
                         return (
                           <View key={item.id} style={clStyles.titleRow}>
-                            <Text style={[clStyles.titleInput, getTextStyle(), { fontSize: Math.max(selectedFontSize + 4, 18) }]}>{item.text}</Text>
+                            <RichText text={item.text} style={[clStyles.titleInput, getTextStyle(), { fontSize: Math.max(selectedFontSize + 4, 18) }]} />
                           </View>
                         );
                       }
@@ -1170,7 +1557,10 @@ const NoteModal = ({
                           )}
                           <View style={clStyles.inputWrap}>
                             {selectedChecklistTextMode === 'single' && <BrushStroke index={index} />}
-                            <Text style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}>{item.text}</Text>
+                            <RichText
+                              text={item.text}
+                              style={[clStyles.input, getTextStyle(), { fontSize: selectedFontSize }, item.completed && clStyles.crossed]}
+                            />
                           </View>
                         </View>
                       );
@@ -1188,6 +1578,14 @@ const NoteModal = ({
                             blurOnSubmit={false}
                             onSubmitEditing={() => addItemAfter(item.id)}
                             underlineColorAndroid="transparent"
+                            contextMenuHidden
+                            selection={
+                              activeSelectionTarget?.kind === 'checklist' && activeSelectionTarget.itemId === item.id
+                                ? forcedSelectionRange
+                                : undefined
+                            }
+                            onSelectionChange={onSelectionChangeFor({ kind: 'checklist', itemId: item.id })}
+                            onBlur={onBlurClearSelectionFor({ kind: 'checklist', itemId: item.id })}
                           />
                         </View>
                       );
@@ -1258,6 +1656,7 @@ const NoteModal = ({
                             onBlur={() => {
                               setEditingItemId(prev => (prev === item.id ? null : prev));
                               if (editingSnapshotRef.current?.id === item.id) editingSnapshotRef.current = null;
+                              onBlurClearSelectionFor({ kind: 'checklist', itemId: item.id })();
                             }}
                             onSubmitEditing={() => addItemAfter(item.id)}
                             onKeyPress={({ nativeEvent }) => {
@@ -1283,6 +1682,13 @@ const NoteModal = ({
                               }
                             }}
                             underlineColorAndroid="transparent"
+                            contextMenuHidden
+                            selection={
+                              activeSelectionTarget?.kind === 'checklist' && activeSelectionTarget.itemId === item.id
+                                ? forcedSelectionRange
+                                : undefined
+                            }
+                            onSelectionChange={onSelectionChangeFor({ kind: 'checklist', itemId: item.id })}
                           />
                         </View>
                       </View>
@@ -1290,7 +1696,7 @@ const NoteModal = ({
                   })}
                 </ScrollView>
               ) : (
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, position: 'relative' }}>
                   {!isReadOnlyContent ? (
                     <TextInput
                       style={[s.textInput, getTextStyle(), {
@@ -1308,6 +1714,10 @@ const NoteModal = ({
                       textAlignVertical="top"
                       autoFocus={!isReadOnlyContent}
                       underlineColorAndroid="transparent"
+                      contextMenuHidden
+                      selection={activeSelectionTarget?.kind === 'text' ? forcedSelectionRange : undefined}
+                      onSelectionChange={onSelectionChangeFor({ kind: 'text' })}
+                      onBlur={onBlurClearSelectionFor({ kind: 'text' })}
                     />
                   ) : (
                     <ScrollView
@@ -1315,7 +1725,7 @@ const NoteModal = ({
                       contentContainerStyle={{ paddingTop: 12 + selectedMargins.top, paddingBottom: 12 + selectedMargins.bottom, paddingLeft: selectedMargins.left, paddingRight: selectedMargins.right }}
                       showsVerticalScrollIndicator={false}
                     >
-                      <Text style={[getTextStyle(), { color: selectedTextColor }]}>{typeof content === 'string' ? content : ''}</Text>
+                      <RichText text={typeof content === 'string' ? content : ''} style={[getTextStyle(), { color: selectedTextColor }]} />
                     </ScrollView>
                   )}
                 </View>
@@ -1468,6 +1878,23 @@ const NoteModal = ({
                         </NeuView>
                       </View>
                     )}
+                    {/* Bottom-of-section status label — "applied" once the
+                        note's live styling matches the picked style exactly
+                        (including right after "Save as StickieStyle",
+                        since the just-saved style trivially matches);
+                        "inspo" the moment anything's been nudged since. */}
+                    {appliedStickieStyleSnapshot && (
+                      <Text
+                        style={[
+                          barStyles.stickieStyleStatusLabel,
+                          { color: isStyleUnchangedFromApplied() ? NEU_ACCENT : p.textSecondary },
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {isStyleUnchangedFromApplied() ? 'Styling applied: ' : 'Styling inspo: '}
+                        <Text style={barStyles.stickieStyleStatusLabelName}>{appliedStickieStyleSnapshot.name}</Text>
+                      </Text>
+                    )}
                   </View>
                   <View style={barStyles.vDivider} />
                 </>
@@ -1488,10 +1915,7 @@ const NoteModal = ({
                     </Text>
                     <NeuToggle
                       value={useStickieStyleToggle}
-                      onValueChange={(v) => {
-                        setUseStickieStyleToggle(v);
-                        if (!v) setAppliedStickieStyleSnapshot(null);
-                      }}
+                      onValueChange={handleUseStickieStyleToggleChange}
                       isDark={isDark}
                     />
                   </View>
@@ -2140,6 +2564,19 @@ const s = StyleSheet.create({
   tabDropdownText: { fontSize: 13.5, color: '#3A3A3C', flex: 1 },
   tabDropdownTextActive: { color: '#F5A623', fontWeight: '700' },
   tabDropdownCheck: { fontSize: 12, fontWeight: '700', color: '#F5A623' },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  undoRedoIcon: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  undoRedoIconDisabled: {
+    opacity: 0.25,
+  },
   arrowIconV: {
     fontSize: 16, fontWeight: '600', color: '#000000',
     transform: [{ scaleX: 1.3 }],
@@ -2318,6 +2755,15 @@ const barStyles = StyleSheet.create({
   stickieStyleOptionCheck: {
     color: NEU_ACCENT,
     fontSize: 12,
+    fontWeight: '700',
+  },
+  stickieStyleStatusLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 10,
+    lineHeight: 13,
+  },
+  stickieStyleStatusLabelName: {
     fontWeight: '700',
   },
   stickieToggleRow: {

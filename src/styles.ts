@@ -1,5 +1,5 @@
 import { Dimensions, StyleSheet } from 'react-native';
-import { NEU_BASE, NEU_LIGHT_SHADOW, NEU_DARK_SHADOW, NEU_TEXT_PRIMARY, NEU_TEXT_SECONDARY, NEU_ACCENT, NEU_RADIUS } from './theme/neumorphic';
+import { NEU_BASE, NEU_LIGHT_SHADOW, NEU_DARK_SHADOW, NEU_TEXT_PRIMARY, NEU_TEXT_SECONDARY, NEU_ACCENT, NEU_TAB_NOTCH_COLOR, NEU_RADIUS } from './theme/neumorphic';
 
 // Gutter around each 32px-wide tab pill was 16px per side (64px rail).
 // Reduced ~70% to ~5px per side, so the rail itself shrinks to 42px.
@@ -127,6 +127,24 @@ export default StyleSheet.create({
     borderLeftWidth: 2,
     borderStyle: 'dashed',
     borderColor: NEU_DARK_SHADOW,
+  },
+  // Active-tab indicator (see MainScreen.tsx's tab pill rendering) — sits
+  // in the ~9px gutter between the 32px-wide pill and the 50px-wide rail's
+  // outer edge (RAIL_WIDTH - pill width, halved), so it never overlaps the
+  // pill itself or forces the rail wider. Vertically centered against the
+  // pill's 80px height: (80 - 56) / 2 = 12. NEU_TAB_NOTCH_COLOR is a
+  // brighter, more saturated shade than NEU_ACCENT — the app's normal
+  // accent reads a little muted/muddy at this small a size against the
+  // rail's own pastel pill colors, so the notch gets its own punchier tone
+  // rather than reusing NEU_ACCENT verbatim.
+  activeTabNotch: {
+    position: 'absolute',
+    left: -9,
+    top: 12,
+    width: 4,
+    height: 56,
+    borderRadius: 2,
+    backgroundColor: NEU_TAB_NOTCH_COLOR,
   },
   tabPillAddButton: {
     width: 32,

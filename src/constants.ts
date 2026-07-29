@@ -4,6 +4,7 @@ import { NEU_NOTE_COLORS, NEU_ACCENT } from './theme/neumorphic';
 // Bright, saturated note colors — designed to sit inside a NeuView so the
 // soft dual-shadow still reads even though the fill itself is colorful.
 export const COLORS = NEU_NOTE_COLORS;
+
 export const TEXT_COLORS = ['#3A3F4B', '#000000', '#FFFFFF', '#4A4A4A', '#D32F2F', '#1976D2', '#2E7D32', '#7B1FA2', '#F5A623', '#00796B'];
 
 // Each entry's `value` is always the Regular file — the one actually

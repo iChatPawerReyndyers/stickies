@@ -12,11 +12,19 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
-import { AppSettings, AppTheme, SortOrder, ViewMode, ChecklistTextMode, Note, Tab } from '../types';
+import { AppSettings, AppTheme, SortOrder, ViewMode, ChecklistTextMode, Note, Tab, StickieStyle } from '../types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
 import { COLORS, TEXT_COLORS, FONTS } from '../constants';
+// Reads the app's real native version at runtime (Android's versionName /
+// iOS's CFBundleShortVersionString) instead of a separately-maintained JS
+// constant — this is the exact same value build.gradle's own versionName
+// bakes into the release APK's filename (see android/app/build.gradle),
+// so Settings and the APK filename can never drift out of sync. Requires
+// the 'react-native-device-info' package (native module — needs a rebuild
+// after installing, not just a JS bundle refresh).
+import DeviceInfo from 'react-native-device-info';
 import { NeuView, NeuPressable, NeuToggle, NeuRadio } from '../components/Neumorphic';
 import { resolveDefaultTabId } from '../utils/tabDefaults';
 import PinSetupModal from '../components/PinSetupModal';
@@ -49,6 +57,13 @@ const SettingsModal = ({
 }: SettingsModalProps) => {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
+  // Same paste-JSON pattern as the notes import above, applied to
+  // StickieStyles instead — kept as its own state/modal/handler set rather
+  // than generalizing the two, since they parse and merge different shapes
+  // (notes+tabs vs. a flat StickieStyle array) and conflating them would
+  // make both harder to follow for a fairly small amount of shared code.
+  const [showStyleImport, setShowStyleImport] = useState(false);
+  const [styleImportText, setStyleImportText] = useState('');
   // Which PIN flow is currently open: 'create' (turning the lock on for the
   // first time), 'change' (replacing an existing PIN), 'disable' (turning
   // the lock off — still requires verifying the current PIN), or null when
@@ -130,6 +145,59 @@ const SettingsModal = ({
       );
     } catch {
       Alert.alert('Invalid JSON', 'Could not parse the pasted content. Make sure it is a valid Stickies backup.');
+    }
+  };
+
+  const handleExportStyles = async () => {
+    const payload = JSON.stringify({ stickieStyles: settings.stickieStyles }, null, 2);
+    try {
+      await Share.share({ message: payload, title: 'Stickies StickieStyles Backup' });
+    } catch {
+      Alert.alert('Export failed', 'Could not share the StickieStyles backup.');
+    }
+  };
+
+  const handleStyleImportConfirm = () => {
+    try {
+      const parsed = JSON.parse(styleImportText);
+      // Accepts either a bare array of styles or the `{ stickieStyles }`
+      // wrapper handleExportStyles above produces, same
+      // accept-both-shapes leniency handleImportConfirm gives notes.
+      const importedStyles: StickieStyle[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed.stickieStyles) ? parsed.stickieStyles : null;
+      if (!importedStyles) throw new Error();
+      // Loose shape check — just enough that a style missing these core
+      // fields (garbage/unrelated JSON) gets caught here instead of
+      // silently breaking StickieStylePreviewCard/applyStickieStyle later.
+      const validStyles = importedStyles.filter(
+        s => s && typeof s.id === 'string' && typeof s.name === 'string' && typeof s.color === 'string'
+      );
+      if (validStyles.length === 0) throw new Error();
+
+      const existingIds = new Set(settings.stickieStyles.map(s => s.id));
+      const newStyles = validStyles.filter(s => !existingIds.has(s.id));
+      const skippedCount = validStyles.length - newStyles.length;
+      const skippedNote = skippedCount > 0 ? ` ${skippedCount} already exist locally and will be skipped.` : '';
+
+      Alert.alert(
+        'Confirm Import',
+        `This will add ${newStyles.length} new StickieStyle(s) to your saved styles.${skippedNote} Continue?`,
+        [
+          { text: 'Cancel', onPress: () => {} },
+          {
+            text: 'Import',
+            onPress: () => {
+              onUpdateSettings({ stickieStyles: [...settings.stickieStyles, ...newStyles] });
+              setShowStyleImport(false);
+              setStyleImportText('');
+              Alert.alert('Done', `${newStyles.length} StickieStyle(s) imported.`);
+            },
+          },
+        ]
+      );
+    } catch {
+      Alert.alert('Invalid JSON', 'Could not parse the pasted content. Make sure it is a valid StickieStyles backup.');
     }
   };
 
@@ -526,11 +594,17 @@ const SettingsModal = ({
                 <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Import</Text>
               </NeuPressable>
             </Row>
+            <Row>
+              <RowLabel label="Export StickieStyles (JSON)" />
+              <NeuPressable isDark={isDark} radius={9} backgroundColor={NEU_ACCENT} style={{ paddingHorizontal: 14, paddingVertical: 7 }} onPress={handleExportStyles}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Export</Text>
+              </NeuPressable>
+            </Row>
             <Row last>
-              <RowLabel label="Import StickieStyle" hint="Details coming soon" />
-              <NeuView isDark={isDark} inset radius={9} style={{ paddingHorizontal: 14, paddingVertical: 7 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: sub }}>Import</Text>
-              </NeuView>
+              <RowLabel label="Import StickieStyles (JSON)" />
+              <NeuPressable isDark={isDark} radius={9} backgroundColor={NEU_ACCENT} style={{ paddingHorizontal: 14, paddingVertical: 7 }} onPress={() => setShowStyleImport(true)}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Import</Text>
+              </NeuPressable>
             </Row>
           </SectionCard>
 
@@ -542,6 +616,15 @@ const SettingsModal = ({
               <NeuView isDark={isDark} inset radius={9} style={{ paddingHorizontal: 14, paddingVertical: 7 }}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: sub }}>Connect</Text>
               </NeuView>
+            </Row>
+          </SectionCard>
+
+          {/* ── ABOUT ── */}
+          <SectionHeader label="About" />
+          <SectionCard>
+            <Row last>
+              <RowLabel label="Version" />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: sub }}>{DeviceInfo.getVersion()}</Text>
             </Row>
           </SectionCard>
 
@@ -570,6 +653,39 @@ const SettingsModal = ({
                   multiline
                   value={importText}
                   onChangeText={setImportText}
+                  placeholder="Paste JSON here…"
+                  placeholderTextColor={sub}
+                  textAlignVertical="top"
+                  autoFocus
+                />
+              </NeuView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Import StickieStyles JSON overlay — same pattern as the notes
+            one above, applied to settings.stickieStyles instead. */}
+        <Modal visible={showStyleImport} animationType="slide" transparent onRequestClose={() => setShowStyleImport(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+            <View style={{ backgroundColor: p.base, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '70%' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <TouchableOpacity onPress={() => { setShowStyleImport(false); setStyleImportText(''); }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: NEU_DANGER }}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: text }}>Import StickieStyles</Text>
+                <TouchableOpacity onPress={handleStyleImportConfirm}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: NEU_ACCENT }}>Import</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 12, color: sub, marginBottom: 12, lineHeight: 17 }}>
+                Paste a StickieStyles backup JSON below. New styles are added to your saved styles — any whose id already exists locally is skipped rather than overwritten.
+              </Text>
+              <NeuView isDark={isDark} inset radius={NEU_RADIUS.md} style={{ flex: 1 }}>
+                <TextInput
+                  style={{ flex: 1, color: text, padding: 12, fontSize: 12, fontFamily: 'monospace' }}
+                  multiline
+                  value={styleImportText}
+                  onChangeText={setStyleImportText}
                   placeholder="Paste JSON here…"
                   placeholderTextColor={sub}
                   textAlignVertical="top"

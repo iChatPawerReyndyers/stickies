@@ -19,8 +19,8 @@ android {
         applicationId "com.stickies"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.0.8"
     }
 
     signingConfigs {
@@ -47,6 +47,17 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+
+    // Renames every built APK (debug and release) to "Stickies-vX.Y.apk",
+    // using this same file's own versionName above — the single source of
+    // truth that also drives what Settings shows via react-native-
+    // device-info's DeviceInfo.getVersion() (see SettingsModal.tsx), so the
+    // filename and the in-app version can never drift apart.
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "Stickies-v${variant.versionName}.apk"
         }
     }
 }

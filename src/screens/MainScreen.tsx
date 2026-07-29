@@ -927,37 +927,45 @@ const MainScreen = () => {
             const resolvedTabImage = resolveImageUrl(tab.backgroundImageUrl);
             return (
               <View key={tab.id} style={styles.tabPillGroup}>
-                <NeuView
-                  radius={16}
-                  isDark={settings.theme === 'dark'}
-                  backgroundColor={isActive ? darkenColor(tab.color) : tab.color}
-                  style={{ width: 32, height: 80, marginBottom: 4, overflow: 'hidden' }}
-                >
-                  {!!resolvedTabImage && (
-                    <Image
-                      source={{ uri: resolvedTabImage }}
-                      style={[StyleSheet.absoluteFill, isActive && { opacity: 0.55 }]}
-                      resizeMode="cover"
-                    />
-                  )}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-                    onPress={() => setActiveTabId(tab.id)}
-                    onLongPress={() => { setEditingTab(tab); setShowTabModal(true); }}
+                <View style={{ position: 'relative' }}>
+                  {/* Active-tab indicator — a small accent bar hanging off
+                      the pill's outer (left/rail) edge, independent of the
+                      pill's own shape/shadow. Reads clearly at a glance
+                      without competing with the app's soft neumorphic
+                      style the way a hard border ring would. */}
+                  {isActive && <View pointerEvents="none" style={styles.activeTabNotch} />}
+                  <NeuView
+                    radius={16}
+                    isDark={settings.theme === 'dark'}
+                    backgroundColor={isActive ? darkenColor(tab.color) : tab.color}
+                    style={{ width: 32, height: 80, marginBottom: 4, overflow: 'hidden' }}
                   >
-                    <View style={styles.tabPillLabelWrapper}>
-                      <Text
-                        style={[styles.tabPillLabelText, { color: tab.textColor || '#FFFFFF' }, isActive && styles.tabPillLabelTextActive]}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.5}
-                      >
-                        {tab.name}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </NeuView>
+                    {!!resolvedTabImage && (
+                      <Image
+                        source={{ uri: resolvedTabImage }}
+                        style={[StyleSheet.absoluteFill, isActive && { opacity: 0.55 }]}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+                      onPress={() => setActiveTabId(tab.id)}
+                      onLongPress={() => { setEditingTab(tab); setShowTabModal(true); }}
+                    >
+                      <View style={styles.tabPillLabelWrapper}>
+                        <Text
+                          style={[styles.tabPillLabelText, { color: tab.textColor || '#FFFFFF' }, isActive && styles.tabPillLabelTextActive]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.5}
+                        >
+                          {tab.name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </NeuView>
+                </View>
                 <View style={styles.tabPillConnector} />
               </View>
             );
@@ -974,37 +982,40 @@ const MainScreen = () => {
 
           {trashTab && (
             <View style={styles.tabPillDivider}>
-              <NeuView
-                radius={16}
-                isDark={settings.theme === 'dark'}
-                backgroundColor={activeTabId === trashTab.id ? darkenColor(trashTab.color) : trashTab.color}
-                style={{ width: 32, height: 80, overflow: 'hidden' }}
-              >
-                {!!resolveImageUrl(trashTab.backgroundImageUrl) && (
-                  <Image
-                    source={{ uri: resolveImageUrl(trashTab.backgroundImageUrl) }}
-                    style={[StyleSheet.absoluteFill, activeTabId === trashTab.id && { opacity: 0.55 }]}
-                    resizeMode="cover"
-                  />
-                )}
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-                  onPress={() => setActiveTabId(trashTab.id)}
-                  onLongPress={() => { setEditingTab(trashTab); setShowTabModal(true); }}
+              <View style={{ position: 'relative' }}>
+                {activeTabId === trashTab.id && <View pointerEvents="none" style={styles.activeTabNotch} />}
+                <NeuView
+                  radius={16}
+                  isDark={settings.theme === 'dark'}
+                  backgroundColor={activeTabId === trashTab.id ? darkenColor(trashTab.color) : trashTab.color}
+                  style={{ width: 32, height: 80, overflow: 'hidden' }}
                 >
-                  <View style={styles.tabPillLabelWrapper}>
-                    <Text
-                      style={[styles.tabPillLabelText, { color: trashTab.textColor || '#FFFFFF' }, activeTabId === trashTab.id && styles.tabPillLabelTextActive]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.5}
-                    >
-                      {trashTab.name}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </NeuView>
+                  {!!resolveImageUrl(trashTab.backgroundImageUrl) && (
+                    <Image
+                      source={{ uri: resolveImageUrl(trashTab.backgroundImageUrl) }}
+                      style={[StyleSheet.absoluteFill, activeTabId === trashTab.id && { opacity: 0.55 }]}
+                      resizeMode="cover"
+                    />
+                  )}
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+                    onPress={() => setActiveTabId(trashTab.id)}
+                    onLongPress={() => { setEditingTab(trashTab); setShowTabModal(true); }}
+                  >
+                    <View style={styles.tabPillLabelWrapper}>
+                      <Text
+                        style={[styles.tabPillLabelText, { color: trashTab.textColor || '#FFFFFF' }, activeTabId === trashTab.id && styles.tabPillLabelTextActive]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.5}
+                      >
+                        {trashTab.name}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </NeuView>
+              </View>
             </View>
           )}
         </ScrollView>
@@ -1106,6 +1117,7 @@ const MainScreen = () => {
       <NoteModal
         visible={showModal}
         tabName={noteModalTabName}
+        noteId={editingNote?.id}
         isDark={settings.theme === 'dark'}
         contentType={newNoteContentType}
         onContentTypeChange={setNewNoteContentType}
@@ -1175,6 +1187,7 @@ const MainScreen = () => {
       <NoteModal
         visible={showViewOnlyModal}
         tabName={viewOnlyTabName}
+        noteId={viewOnlyNote?.id}
         isDark={settings.theme === 'dark'}
         contentType={viewOnlyNote?.contentType || 'text'}
         onContentTypeChange={() => {}}
@@ -1295,17 +1308,25 @@ const MainScreen = () => {
           is showing, a smaller value under gesture navigation, and 0 when
           there's no nav bar to avoid at all; iOS gets its home-indicator
           inset the same way. */}
-      <View style={{ position: 'absolute', bottom: 32 + insets.bottom, right: 32 }}>
-        <NeuPressable
-          radius={28}
-          isDark={settings.theme === 'dark'}
-          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
-          onPress={createNewNote}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.fabText}>+</Text>
-        </NeuPressable>
-      </View>
+      {/* Hidden entirely in Archived/Trash — creating a note there was
+          already blocked (see createNewNote's Alert guards above), but
+          showing a "+" that just pops an alert when tapped is worse than
+          not showing one at all. createNewNote's own guards stay in place
+          as a defensive fallback (e.g. a stale activeTabId at the instant
+          of a tab switch), they just shouldn't normally be reachable now. */}
+      {activeTabId !== 'archived' && activeTabId !== 'trash' && (
+        <View style={{ position: 'absolute', bottom: 32 + insets.bottom, right: 32 }}>
+          <NeuPressable
+            radius={28}
+            isDark={settings.theme === 'dark'}
+            style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+            onPress={createNewNote}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.fabText}>+</Text>
+          </NeuPressable>
+        </View>
+      )}
 
       <Toast
         visible={toast.visible}

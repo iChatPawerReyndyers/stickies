@@ -39,6 +39,12 @@ export const NEU_TEXT_SECONDARY_DARK = '#9297A5';
 // Single accent used for active/selected states, sliders, primary actions.
 export const NEU_ACCENT = '#F5A623';       // warm orange
 export const NEU_ACCENT_SOFT = '#FBD9A6';  // lighter tint, behind accent icons
+// Brighter/more saturated than NEU_ACCENT — used only for the active-tab
+// rail notch (see styles.ts's activeTabNotch), which is small enough that
+// the normal accent shade reads a bit muted against the rail's pastel
+// pill colors. Not a general-purpose token; NEU_ACCENT stays the default
+// everywhere else (buttons, toggles, selected states, etc.).
+export const NEU_TAB_NOTCH_COLOR = '#FFB238';
 export const NEU_DANGER = '#E06B6B';        // cancel / destructive text & actions
 
 // Pastel note-color palette — softened tints of the same hues so the

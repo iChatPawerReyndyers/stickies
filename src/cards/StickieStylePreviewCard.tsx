@@ -19,6 +19,7 @@ import { FRAME_COMPONENTS } from '../frames';
 import { resolveImageUrl } from '../utils/googleDriveImage';
 import { resolveFontStyle } from '../utils/fontResolver';
 import CheckboxIcon from '../components/CheckboxIcon';
+import RichText from '../components/RichText';
 
 type StickieStylePreviewCardProps = {
   style: StickieStyle;
@@ -98,7 +99,7 @@ const StickieStylePreviewCard: React.FC<StickieStylePreviewCardProps> = ({
         pointerEvents="none"
       >
         {contentType === 'text' ? (
-          <Text style={getTextStyle()}>{typeof content === 'string' ? content : ''}</Text>
+          <RichText text={typeof content === 'string' ? content : ''} style={getTextStyle()} />
         ) : (
           <>
             {items[0]?.text ? (

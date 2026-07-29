@@ -1958,7 +1958,9 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RNGestureHandler (3.0.2):
+  - RNDeviceInfo (15.0.2):
+    - React-Core
+  - RNGestureHandler (3.1.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2107,6 +2109,7 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
   - "RNCClipboard (from `../node_modules/@react-native-clipboard/clipboard`)"
+  - RNDeviceInfo (from `../node_modules/react-native-device-info`)
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
@@ -2269,6 +2272,8 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
   RNCClipboard:
     :path: "../node_modules/@react-native-clipboard/clipboard"
+  RNDeviceInfo:
+    :path: "../node_modules/react-native-device-info"
   RNGestureHandler:
     :path: "../node_modules/react-native-gesture-handler"
   RNSVG:
@@ -2279,7 +2284,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   AsyncStorage: dba9d05b9aa34413760ea5a74f63a7e7f9fddf73
   FBLazyVector: b3e7ad108f0d882e30445c5527d774e3fd432f3d
-  hermes-engine: 3467503a75d45f0952009734b8e4bd9725d01cb0
+  hermes-engine: d9433b494a491ed246b35ce050a50eba6f1df01c
   RCTDeprecation: 2a74a2c57675e64419bd89078efde81f7c1de90b
   RCTRequired: 30451112e6fef4e6f31b4e7eee0845156e35e4b0
   RCTSwiftUI: 5aaf0b07e747ba749dc6acc94d8bd41eea4b570f
@@ -2355,7 +2360,8 @@ SPEC CHECKSUMS:
   ReactCommon: 4d01bfb533b93a2103329dfefc74db6a9e272888
   ReactNativeDependencies: fa0a54b3f5319ae0e3b9aff32bfee7a424b88e66
   RNCClipboard: c1cdf3cdd72df606520114f42e61c6898a488dd8
-  RNGestureHandler: ef19613372e4c87374fe9494862e366d82d1852c
+  RNDeviceInfo: d79872e11c8e9c4de0d65b0ee6e0cee719f37fea
+  RNGestureHandler: 6206fc566272f60a2d57a0b3258c495a73b7dc90
   RNSVG: ffe18ba0e8fbad864bf22d6f0060a4ee88ec9bf3
   Yoga: 94172d87dd5d83fc929bf1ee53121b5d4490b5f2
 
