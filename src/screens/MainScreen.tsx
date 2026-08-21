@@ -5,6 +5,7 @@ import {
   Image,
   FlatList,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   Alert,
   StyleSheet,
@@ -39,6 +40,7 @@ import { NEU_ACCENT, NEU_BASE } from '../theme/neumorphic';
 import { darkenColor } from '../utils/color';
 import { resolveImageUrl } from '../utils/googleDriveImage';
 import { resolveDefaultTabId } from '../utils/tabDefaults';
+import DraggableGridItem, { DraggableRect } from '../components/DraggableGridItem';
 
 // Hand-lettered "Stickies" wordmark shown in the header in place of plain
 // text. Lives at the project root's /assets folder (sibling to /screens,
@@ -67,8 +69,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   showDiscardConfirmation: true,
   restoreChecklistState: true,
   defaultChecklistTextMode: 'single',
+  defaultContentType: 'text',
   stickieStyles: [],
   defaultStyleId: undefined,
+  useDefaultStickieStyle: false,
   defaultTabId: 'all',
   showAllTab: true,
   // App PIN lock — off by default, 4 digits once enabled. See
@@ -125,6 +129,40 @@ const getNextTabColor = (currentTabs: Tab[]) => {
 // naturally fills gaps left by earlier spanning notes rather than just
 // stacking everything strictly in a line.
 const GRID_GAP = 12;
+
+// Rearrange-mode banner shown above the grid/list while dragging is active
+// (see MainScreen's render below). Kept as its own small StyleSheet rather
+// than folding into styles.ts since it's specific to this one transient
+// UI state.
+const rearrangeStyles = StyleSheet.create({
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(245, 166, 35, 0.12)',
+  },
+  // Collapses the banner to nothing without unmounting it — see the
+  // render-site comment for why this stays mounted at all times instead
+  // of a conditional {rearrangeMode && <View>...</View>}.
+  bannerHidden: {
+    paddingVertical: 0,
+    height: 0,
+    opacity: 0,
+    overflow: 'hidden',
+  },
+  bannerText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: NEU_ACCENT,
+  },
+  bannerDone: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: NEU_ACCENT,
+  },
+});
 
 export type GridPlacement = { note: Note; row: number; col: number; colSpan: number; rowSpan: number };
 
@@ -261,6 +299,12 @@ const MainScreen = () => {
   // false every cold start; once true it stays true until the app is
   // relaunched (see PinLockScreen gate below in the render).
   const [unlocked, setUnlocked] = useState(false);
+  // Drag-to-reorder ("rearrange mode") — entered by long-pressing empty
+  // grid/list space (see the Pressable wrapping each view below), exited
+  // via the "Done" banner or tapping empty space again. Grid still drags
+  // (see handleGridDrop); list view reorders via explicit up/down buttons
+  // instead (see moveNoteInList) rather than a drag gesture.
+  const [rearrangeMode, setRearrangeMode] = useState(false);
 
   const updateSettings = (patch: Partial<AppSettings>) =>
     setSettings(prev => ({ ...prev, ...patch }));
@@ -303,6 +347,86 @@ const MainScreen = () => {
     setToast({ visible: true, message, onUndo });
   };
   const hideToast = () => setToast(prev => ({ ...prev, visible: false }));
+
+  // ── Drag-to-reorder ──────────────────────────────────────────────────────────
+
+  const enterRearrangeMode = () => {
+    // Dragging only means anything under Manual sort — any other sort
+    // order would just re-sort the list right back on the next render,
+    // silently undoing whatever was just dragged. Switching it here rather
+    // than blocking rearrange mode entirely keeps this a one-tap action
+    // instead of a dead end.
+    if (settings.sortOrder !== 'manual') {
+      updateSettings({ sortOrder: 'manual' });
+      showToast('Sort order switched to Manual so you can drag to reorder.');
+    }
+    setRearrangeMode(true);
+  };
+  const exitRearrangeMode = () => setRearrangeMode(false);
+
+  // Reorders just the currently-visible notes (baseNotes) into
+  // `newOrderIds`, while leaving every other note (a different tab, or
+  // filtered out of "All") sitting exactly where it already was in the
+  // full `notes` array — it only rewrites the specific index slots the
+  // visible notes occupied, in their new order.
+  const reorderVisibleNotes = (newOrderIds: string[]) => {
+    setNotes(prev => {
+      const visibleIdSet = new Set(newOrderIds);
+      const slots: number[] = [];
+      prev.forEach((n, i) => { if (visibleIdSet.has(n.id)) slots.push(i); });
+      const byId = new Map(prev.map(n => [n.id, n] as const));
+      const next = [...prev];
+      newOrderIds.forEach((id, idx) => {
+        const note = byId.get(id);
+        if (note) next[slots[idx]] = note;
+      });
+      return next;
+    });
+  };
+
+  // Grid drop target — see DraggableGridItem.tsx for the hit-testing that
+  // produces targetNoteId. A null target (dropped over empty space, or
+  // back on itself) is simply ignored; the card snaps back to its own slot
+  // on its own (see that component's release animation).
+  const handleGridDrop = (draggedNoteId: string, targetNoteId: string | null) => {
+    if (!targetNoteId || draggedNoteId === targetNoteId) return;
+    const currentOrder = baseNotes.map(n => n.id);
+    const fromIdx = currentOrder.indexOf(draggedNoteId);
+    const toIdx = currentOrder.indexOf(targetNoteId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const nextOrder = [...currentOrder];
+    nextOrder.splice(fromIdx, 1);
+    nextOrder.splice(toIdx, 0, draggedNoteId);
+    // LayoutAnimation removed — it's the prime suspect for the
+    // SurfaceMountingManager.overridePropsReadableMap crash. LayoutAnimation
+    // + Fabric/New Architecture has a documented history of exactly this
+    // failure mode: it schedules a native animation across a batch of
+    // views, and if any of those views get removed/re-keyed by the very
+    // re-render this triggers before the animation's mount items finish
+    // applying, Fabric can crash trying to update a tag that's already
+    // gone. Cards now just snap to their new position instead of sliding —
+    // less polished, but this removes the most likely crash cause. If the
+    // crash persists without this, the cause is elsewhere (see the PanResponder
+    // spring-back animations in DraggableGridItem.tsx as the next suspect).
+    reorderVisibleNotes(nextOrder);
+  };
+
+  // Replaces the old drag-based list reorder — react-native-draggable-flatlist
+  // was silently rendering zero rows for some environments (no thrown
+  // error, just an empty list), which turned out to be the actual cause of
+  // "list view shows no notes". Swapping to a plain FlatList removes that
+  // dependency entirely; reordering while in rearrange mode is now these
+  // explicit up/down swaps instead of a drag gesture — see
+  // NoteListRow.tsx's onMoveUp/onMoveDown.
+  const moveNoteInList = (noteId: string, direction: -1 | 1) => {
+    const order = baseNotes.map(n => n.id);
+    const fromIdx = order.indexOf(noteId);
+    const toIdx = fromIdx + direction;
+    if (fromIdx === -1 || toIdx < 0 || toIdx >= order.length) return;
+    const next = [...order];
+    [next[fromIdx], next[toIdx]] = [next[toIdx], next[fromIdx]];
+    reorderVisibleNotes(next);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -461,21 +585,40 @@ const MainScreen = () => {
       return;
     }
     setEditingNote(null);
-    setNewNoteContentType('text');
-    setNewNoteContent('');
-    setSelectedColor(settings.defaultColor);
-    setSelectedTextColor(settings.defaultTextColor);
-    setSelectedFont(settings.defaultFont);
-    setSelectedFontSize(settings.defaultFontSize);
-    setSelectedTextStyle('normal');
-    setUseSvgBackground(false);
-    setSvgFrameId(undefined);
-    setBackgroundImageUrl(undefined);
-    setSelectedMargins(DEFAULT_MARGINS);
-    setSelectedItemSpacing(DEFAULT_ITEM_SPACING);
-    setSelectedLineSpacing(DEFAULT_LINE_SPACING);
-    setSelectedChecklistSort('as-is');
-    setSelectedChecklistTextMode('single');
+    if (settings.useDefaultStickieStyle && settings.stickieStyles.length > 0) {
+      const style = settings.stickieStyles[Math.floor(Math.random() * settings.stickieStyles.length)];
+      setNewNoteContentType(style.contentType);
+      setNewNoteContent(style.contentType === 'checklist' ? [{ id: Date.now().toString(), text: '', completed: false }] : '');
+      setSelectedColor(style.color);
+      setSelectedTextColor(style.textColor);
+      setSelectedFont(style.fontFamily);
+      setSelectedFontSize(style.fontSize);
+      setSelectedTextStyle(style.textStyle);
+      setUseSvgBackground(style.useSvgBackground);
+      setSvgFrameId(style.useSvgBackground ? style.svgFrameId : undefined);
+      setBackgroundImageUrl(style.backgroundImageUrl);
+      setSelectedMargins(style.margins || DEFAULT_MARGINS);
+      setSelectedItemSpacing(style.itemSpacing || DEFAULT_ITEM_SPACING);
+      setSelectedLineSpacing(style.lineSpacing ?? DEFAULT_LINE_SPACING);
+      setSelectedChecklistSort(style.checklistSort || 'as-is');
+      setSelectedChecklistTextMode(style.checklistTextMode || settings.defaultChecklistTextMode);
+    } else {
+      setNewNoteContentType(settings.defaultContentType || 'text');
+      setNewNoteContent('');
+      setSelectedColor(settings.defaultColor);
+      setSelectedTextColor(settings.defaultTextColor);
+      setSelectedFont(settings.defaultFont);
+      setSelectedFontSize(settings.defaultFontSize);
+      setSelectedTextStyle('normal');
+      setUseSvgBackground(false);
+      setSvgFrameId(undefined);
+      setBackgroundImageUrl(undefined);
+      setSelectedMargins(DEFAULT_MARGINS);
+      setSelectedItemSpacing(DEFAULT_ITEM_SPACING);
+      setSelectedLineSpacing(DEFAULT_LINE_SPACING);
+      setSelectedChecklistSort('as-is');
+      setSelectedChecklistTextMode(settings.defaultChecklistTextMode);
+    }
     setSelectedColSpan(DEFAULT_COL_SPAN);
     setSelectedRowSpan(DEFAULT_ROW_SPAN);
     setChecklistSnapshot(undefined);
@@ -779,15 +922,35 @@ const MainScreen = () => {
   // `noShadow` prop.
   const hasScreenBackgroundImage = !!resolvedScreenBgImage;
 
-  // List view: single-column compact rows, no swipe-to-delete on the row
-  // itself (swipe still works from inside the note modals).
-  const renderListItem = ({ item }: { item: Note }) => (
+  // List view: single-column compact rows, rendered with a plain FlatList
+  // (previously react-native-draggable-flatlist — that library was
+  // silently rendering zero rows in some environments with no error at
+  // all, which turned out to be the real cause behind "list view shows no
+  // notes"; a plain FlatList has no such failure mode). No swipe-to-delete
+  // on the row itself (swipe still works from inside the note modals).
+  //
+  // Long-press is overloaded by mode: normally it opens View Only (see the
+  // non-rearrange branch below), same as always. Once already in rearrange
+  // mode (entered via long-pressing empty space — see the Pressable
+  // wrapping the list below), long-press is disabled entirely — reordering
+  // instead happens via each row's explicit up/down buttons (see
+  // NoteListRow's onMoveUp/onMoveDown), which unlike a drag gesture can't
+  // silently fail to register.
+  const renderListItem = ({ item, index }: { item: Note; index: number }) => (
     <NoteListRow
       note={item}
       onEdit={() => (isLockedNote(item) ? openReadOnly(item) : editNote(item))}
-      onLongPress={() => (isLockedNote(item) ? openReadOnly(item) : openViewOnlyModal(item))}
+      onLongPress={() => {
+        if (rearrangeMode) return;
+        isLockedNote(item) ? openReadOnly(item) : openViewOnlyModal(item);
+      }}
       hasScreenBackgroundImage={hasScreenBackgroundImage}
       isDark={settings.theme === 'dark'}
+      rearrangeMode={rearrangeMode}
+      onMoveUp={() => moveNoteInList(item.id, -1)}
+      onMoveDown={() => moveNoteInList(item.id, 1)}
+      canMoveUp={index > 0}
+      canMoveDown={index < baseNotes.length - 1}
     />
   );
 
@@ -840,6 +1003,25 @@ const MainScreen = () => {
   const noteModalTabId = editingNote ? editingNote.tabId : activeTabId;
   const noteModalTabName = tabs.find(t => t.id === noteModalTabId)?.name || 'General';
   const viewOnlyTabName = tabs.find(t => t.id === viewOnlyNote?.tabId)?.name || 'General';
+
+  // Passed to NoteModal as defaultStyleFields — what "use the default style
+  // set on Settings" resolves to when the per-note "Use StickieStyle"
+  // toggle is turned off (see NoteModal's handleUseStickieStyleToggleChange).
+  const defaultStyleFields = {
+    color: settings.defaultColor,
+    textColor: settings.defaultTextColor,
+    fontFamily: settings.defaultFont,
+    fontSize: settings.defaultFontSize,
+    textStyle: 'normal' as TextStyle,
+    useSvgBackground: false,
+    svgFrameId: undefined as string | undefined,
+    backgroundImageUrl: '',
+    margins: DEFAULT_MARGINS,
+    itemSpacing: DEFAULT_ITEM_SPACING,
+    lineSpacing: DEFAULT_LINE_SPACING,
+    checklistSort: 'as-is' as ChecklistSort,
+    checklistTextMode: settings.defaultChecklistTextMode,
+  };
 
   // App PIN lock gate — shown instead of the main screen whenever the lock
   // is enabled and this session hasn't been unlocked yet. Placed after data
@@ -1021,20 +1203,47 @@ const MainScreen = () => {
         </ScrollView>
 
         <View style={styles.mainContentArea}>
+          {/* Rearrange-mode banner — the explicit way out besides tapping
+              empty space again. Always mounted (not conditionally
+              rendered) and toggled via style instead — after several
+              rounds chasing a Fabric/New Architecture crash
+              (java.lang.AssertionError in
+              SurfaceMountingManager.overridePropsReadableMap) that
+              consistently happened on "Done", the crash log showed this
+              exact subtree's views with parentTag=null right before the
+              failure: unmounting it in the same React commit as every
+              grid card's rearrangeMode-driven prop changes (pointerEvents,
+              gesture handlers) was one mutation too many for this Fabric
+              build to reconcile in one batch. Keeping it permanently
+              mounted and just hiding it removes that unmount from the
+              equation entirely. */}
+          <View style={[rearrangeStyles.banner, !rearrangeMode && rearrangeStyles.bannerHidden]} pointerEvents={rearrangeMode ? 'auto' : 'none'}>
+            <Text style={rearrangeStyles.bannerText}>{isListView ? 'Use ▲▼ on a note to reorder' : 'Drag cards to reorder'}</Text>
+            <TouchableOpacity onPress={exitRearrangeMode} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={rearrangeStyles.bannerDone}>Done</Text>
+            </TouchableOpacity>
+          </View>
+
           {isListView ? (
-            <FlatList
-              key={`list-${settings.viewMode}`}
+            <Pressable
               style={{ flex: 1 }}
-              data={baseNotes}
-              keyExtractor={item => item.id}
-              contentContainerStyle={styles.listContent}
-              renderItem={renderListItem}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>No notes yet. Create one to get started!</Text>
-                </View>
-              }
-            />
+              onLongPress={enterRearrangeMode}
+              onPress={rearrangeMode ? exitRearrangeMode : undefined}
+            >
+              <FlatList
+                style={{ flex: 1 }}
+                data={baseNotes}
+                extraData={[settings.theme, rearrangeMode, hasScreenBackgroundImage]}
+                keyExtractor={item => item.id}
+                contentContainerStyle={styles.listContent}
+                renderItem={renderListItem}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No notes yet. Create one to get started!</Text>
+                  </View>
+                }
+              />
+            </Pressable>
           ) : baseNotes.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No notes yet. Create one to get started!</Text>
@@ -1044,43 +1253,67 @@ const MainScreen = () => {
             // FlatList's numColumns, which only supports uniform cell sizes)
             // so a note with colSpan/rowSpan > 1 can occupy a rectangle of
             // cells instead of exactly one. See layoutNotesGrid above.
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
-              <View
-                style={{
-                  position: 'relative',
-                  width: '100%',
-                  height: gridLayout!.totalRows * (cardSize + GRID_GAP) - GRID_GAP,
-                }}
-              >
-                {gridLayout!.placements.map(({ note, row, col, colSpan, rowSpan }) => {
-                  const width = cardSize * colSpan + GRID_GAP * (colSpan - 1);
-                  const height = cardSize * rowSpan + GRID_GAP * (rowSpan - 1);
-                  return (
-                    <View
-                      key={note.id}
-                      style={{
-                        position: 'absolute',
-                        left: col * (cardSize + GRID_GAP),
-                        top: row * (cardSize + GRID_GAP),
-                        width,
-                        height,
-                      }}
-                    >
-                      <NoteCard
-                        note={note}
-                        onEdit={() => (isLockedNote(note) ? openReadOnly(note) : editNote(note))}
-                        onDelete={() => deleteNote(note.id)}
-                        onLongPress={() => (isLockedNote(note) ? openReadOnly(note) : openViewOnlyModal(note))}
-                        cardWidth={width}
-                        cardHeight={height}
-                        hasScreenBackgroundImage={hasScreenBackgroundImage}
-                        isDark={settings.theme === 'dark'}
-                      />
-                    </View>
-                  );
-                })}
-              </View>
-            </ScrollView>
+            //
+            // The outer Pressable is what makes "long-press empty grid
+            // space enters rearrange mode" work — touches that land on an
+            // actual card are claimed by that card's own DraggableGridItem
+            // (or, outside rearrange mode, its NoteCard touchable) first,
+            // so this only ever fires for the gaps between/around cards.
+            <Pressable
+              style={{ flex: 1 }}
+              onLongPress={enterRearrangeMode}
+              onPress={rearrangeMode ? exitRearrangeMode : undefined}
+            >
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+                <View
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: gridLayout!.totalRows * (cardSize + GRID_GAP) - GRID_GAP,
+                  }}
+                >
+                  {(() => {
+                    const rects: DraggableRect[] = gridLayout!.placements.map(({ note, row, col, colSpan, rowSpan }) => ({
+                      noteId: note.id,
+                      left: col * (cardSize + GRID_GAP),
+                      top: row * (cardSize + GRID_GAP),
+                      width: cardSize * colSpan + GRID_GAP * (colSpan - 1),
+                      height: cardSize * rowSpan + GRID_GAP * (rowSpan - 1),
+                    }));
+                    return gridLayout!.placements.map(({ note, row, col, colSpan, rowSpan }) => {
+                      const width = cardSize * colSpan + GRID_GAP * (colSpan - 1);
+                      const height = cardSize * rowSpan + GRID_GAP * (rowSpan - 1);
+                      const left = col * (cardSize + GRID_GAP);
+                      const top = row * (cardSize + GRID_GAP);
+                      return (
+                        <DraggableGridItem
+                          key={note.id}
+                          noteId={note.id}
+                          left={left}
+                          top={top}
+                          width={width}
+                          height={height}
+                          rearrangeMode={rearrangeMode}
+                          allRects={rects}
+                          onDrop={handleGridDrop}
+                        >
+                          <NoteCard
+                            note={note}
+                            onEdit={() => (isLockedNote(note) ? openReadOnly(note) : editNote(note))}
+                            onDelete={() => deleteNote(note.id)}
+                            onLongPress={() => (isLockedNote(note) ? openReadOnly(note) : openViewOnlyModal(note))}
+                            cardWidth={width}
+                            cardHeight={height}
+                            hasScreenBackgroundImage={hasScreenBackgroundImage}
+                            isDark={settings.theme === 'dark'}
+                          />
+                        </DraggableGridItem>
+                      );
+                    });
+                  })()}
+                </View>
+              </ScrollView>
+            </Pressable>
           )}
         </View>
       </View>
@@ -1162,6 +1395,7 @@ const MainScreen = () => {
         onTabIdChange={setSelectedTabId}
         stickieStyles={settings.stickieStyles}
         onSaveAsStickieStyle={handleSaveNoteStyleAsStickieStyle}
+        defaultStyleFields={defaultStyleFields}
         restoreChecklistState={settings.restoreChecklistState}
         checklistSnapshot={checklistSnapshot}
         onChecklistSnapshotChange={setChecklistSnapshot}

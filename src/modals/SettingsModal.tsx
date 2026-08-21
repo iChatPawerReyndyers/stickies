@@ -12,7 +12,7 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
-import { AppSettings, AppTheme, SortOrder, ViewMode, ChecklistTextMode, Note, Tab, StickieStyle } from '../types';
+import { AppSettings, AppTheme, SortOrder, ViewMode, ChecklistTextMode, ContentType, Note, Tab, StickieStyle } from '../types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
@@ -25,6 +25,11 @@ import { COLORS, TEXT_COLORS, FONTS } from '../constants';
 // the 'react-native-device-info' package (native module — needs a rebuild
 // after installing, not just a JS bundle refresh).
 import DeviceInfo from 'react-native-device-info';
+// Same clipboard module NoteModal.tsx already uses for its own Copy/Paste
+// toolbar — requires '@react-native-clipboard/clipboard' (native module,
+// needs a rebuild if it isn't already installed).
+import Clipboard from '@react-native-clipboard/clipboard';
+import { fetchDriveTextFile, DriveFetchError } from '../utils/textImportSource';
 import { NeuView, NeuPressable, NeuToggle, NeuRadio } from '../components/Neumorphic';
 import { resolveDefaultTabId } from '../utils/tabDefaults';
 import PinSetupModal from '../components/PinSetupModal';
@@ -57,6 +62,16 @@ const SettingsModal = ({
 }: SettingsModalProps) => {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
+  // 'paste' (type/paste JSON directly) or 'link' (fetch a public Google
+  // Drive .txt/.rtf link and import its content) — see the mode toggle in
+  // the Import JSON overlay below. driveLinkInput/drivePreviewText/
+  // driveFetchLoading only matter in 'link' mode; drivePreviewText is
+  // read-only (rendered in a ScrollView, not a TextInput) and is what
+  // actually gets parsed on Import when this mode is active.
+  const [importSourceMode, setImportSourceMode] = useState<'paste' | 'link'>('paste');
+  const [driveLinkInput, setDriveLinkInput] = useState('');
+  const [drivePreviewText, setDrivePreviewText] = useState('');
+  const [driveFetchLoading, setDriveFetchLoading] = useState(false);
   // Same paste-JSON pattern as the notes import above, applied to
   // StickieStyles instead — kept as its own state/modal/handler set rather
   // than generalizing the two, since they parse and merge different shapes
@@ -64,6 +79,10 @@ const SettingsModal = ({
   // make both harder to follow for a fairly small amount of shared code.
   const [showStyleImport, setShowStyleImport] = useState(false);
   const [styleImportText, setStyleImportText] = useState('');
+  const [styleImportSourceMode, setStyleImportSourceMode] = useState<'paste' | 'link'>('paste');
+  const [styleDriveLinkInput, setStyleDriveLinkInput] = useState('');
+  const [styleDrivePreviewText, setStyleDrivePreviewText] = useState('');
+  const [styleDriveFetchLoading, setStyleDriveFetchLoading] = useState(false);
   // Which PIN flow is currently open: 'create' (turning the lock on for the
   // first time), 'change' (replacing an existing PIN), 'disable' (turning
   // the lock off — still requires verifying the current PIN), or null when
@@ -94,6 +113,7 @@ const SettingsModal = ({
   const effectiveDefaultColor = settings.defaultColor || COLORS[0];
   const effectiveDefaultTextColor = settings.defaultTextColor || TEXT_COLORS[0];
   const effectiveDefaultTabId = resolveDefaultTabId(settings.defaultTabId, tabs, settings.showAllTab);
+  const effectiveDefaultContentType: ContentType = settings.defaultContentType || 'text';
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -110,9 +130,42 @@ const SettingsModal = ({
     }
   };
 
-  const handleImportConfirm = () => {
+  const handlePasteImportText = async () => {
     try {
-      const parsed = JSON.parse(importText);
+      const clip = await Clipboard.getString();
+      if (clip) setImportText(clip);
+    } catch {
+      // Clipboard read failed — no-op, same as elsewhere in the app.
+    }
+  };
+
+  const handleClearImportText = () => setImportText('');
+
+  const handleFetchDriveImport = async () => {
+    setDriveFetchLoading(true);
+    try {
+      const fetched = await fetchDriveTextFile(driveLinkInput);
+      setDrivePreviewText(fetched);
+    } catch (e) {
+      setDrivePreviewText('');
+      Alert.alert('Fetch failed', e instanceof DriveFetchError ? e.message : 'Could not fetch that file.');
+    } finally {
+      setDriveFetchLoading(false);
+    }
+  };
+
+  const resetImportModalState = () => {
+    setShowImport(false);
+    setImportText('');
+    setDriveLinkInput('');
+    setDrivePreviewText('');
+    setImportSourceMode('paste');
+  };
+
+  const handleImportConfirm = () => {
+    const sourceText = importSourceMode === 'link' ? drivePreviewText : importText;
+    try {
+      const parsed = JSON.parse(sourceText);
       // Backward compatible with older backups that were just a bare array
       // of notes with no tabs at all (Array.isArray(parsed)) as well as the
       // current `{ notes, tabs }` shape. Either way, missing/absent tabs
@@ -136,15 +189,14 @@ const SettingsModal = ({
             text: 'Import',
             onPress: () => {
               onImportNotes(importedNotes, importedTabs);
-              setShowImport(false);
-              setImportText('');
+              resetImportModalState();
               Alert.alert('Done', `${importedNotes.length} notes imported.`);
             },
           },
         ]
       );
     } catch {
-      Alert.alert('Invalid JSON', 'Could not parse the pasted content. Make sure it is a valid Stickies backup.');
+      Alert.alert('Invalid JSON', 'Could not parse the pasted or fetched content. Make sure it is a valid Stickies backup.');
     }
   };
 
@@ -157,9 +209,42 @@ const SettingsModal = ({
     }
   };
 
-  const handleStyleImportConfirm = () => {
+  const handlePasteStyleImportText = async () => {
     try {
-      const parsed = JSON.parse(styleImportText);
+      const clip = await Clipboard.getString();
+      if (clip) setStyleImportText(clip);
+    } catch {
+      // Clipboard read failed — no-op.
+    }
+  };
+
+  const handleClearStyleImportText = () => setStyleImportText('');
+
+  const handleFetchStyleDriveImport = async () => {
+    setStyleDriveFetchLoading(true);
+    try {
+      const fetched = await fetchDriveTextFile(styleDriveLinkInput);
+      setStyleDrivePreviewText(fetched);
+    } catch (e) {
+      setStyleDrivePreviewText('');
+      Alert.alert('Fetch failed', e instanceof DriveFetchError ? e.message : 'Could not fetch that file.');
+    } finally {
+      setStyleDriveFetchLoading(false);
+    }
+  };
+
+  const resetStyleImportModalState = () => {
+    setShowStyleImport(false);
+    setStyleImportText('');
+    setStyleDriveLinkInput('');
+    setStyleDrivePreviewText('');
+    setStyleImportSourceMode('paste');
+  };
+
+  const handleStyleImportConfirm = () => {
+    const sourceText = styleImportSourceMode === 'link' ? styleDrivePreviewText : styleImportText;
+    try {
+      const parsed = JSON.parse(sourceText);
       // Accepts either a bare array of styles or the `{ stickieStyles }`
       // wrapper handleExportStyles above produces, same
       // accept-both-shapes leniency handleImportConfirm gives notes.
@@ -189,15 +274,14 @@ const SettingsModal = ({
             text: 'Import',
             onPress: () => {
               onUpdateSettings({ stickieStyles: [...settings.stickieStyles, ...newStyles] });
-              setShowStyleImport(false);
-              setStyleImportText('');
+              resetStyleImportModalState();
               Alert.alert('Done', `${newStyles.length} StickieStyle(s) imported.`);
             },
           },
         ]
       );
     } catch {
-      Alert.alert('Invalid JSON', 'Could not parse the pasted content. Make sure it is a valid StickieStyles backup.');
+      Alert.alert('Invalid JSON', 'Could not parse the pasted or fetched content. Make sure it is a valid StickieStyles backup.');
     }
   };
 
@@ -473,6 +557,28 @@ const SettingsModal = ({
                 isDark={isDark}
               />
             </Row>
+            <Row>
+              <RowLabel label="Default note type" hint="Content type a brand-new note starts as" />
+              <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3 }}>
+                {(['text', 'checklist'] as ContentType[]).map(type => {
+                  const active = effectiveDefaultContentType === type;
+                  return (
+                    <NeuPressable
+                      key={type}
+                      isDark={isDark}
+                      radius={8}
+                      backgroundColor={active ? NEU_ACCENT : undefined}
+                      style={{ paddingHorizontal: 14, paddingVertical: 6 }}
+                      onPress={() => onUpdateSettings({ defaultContentType: type })}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: active ? '700' : '400', color: active ? '#FFFFFF' : sub }}>
+                        {type === 'text' ? 'Text' : 'Checklist'}
+                      </Text>
+                    </NeuPressable>
+                  );
+                })}
+              </NeuView>
+            </Row>
             <Row last>
               <RowLabel label="Default checklist display" hint="How new checklist items show their text" />
               <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3 }}>
@@ -539,6 +645,21 @@ const SettingsModal = ({
           <SectionHeader label="Stickie styles" />
 
           <SectionCard>
+            <Row>
+              <RowLabel
+                label="StickieStyle as default"
+                hint={
+                  settings.stickieStyles.length === 0
+                    ? 'No saved styles yet — falls back to the plain defaults above'
+                    : 'On: new notes randomly pick a saved style. Off: they use the plain defaults above.'
+                }
+              />
+              <NeuToggle
+                value={settings.useDefaultStickieStyle}
+                onValueChange={(v) => onUpdateSettings({ useDefaultStickieStyle: v })}
+                isDark={isDark}
+              />
+            </Row>
             <Row last>
               <View style={{ flex: 1 }}>
                 <RowLabel label="Default tab" hint="Where new notes are created by default" />
@@ -632,11 +753,11 @@ const SettingsModal = ({
         </ScrollView>
 
         {/* Import JSON overlay */}
-        <Modal visible={showImport} animationType="slide" transparent onRequestClose={() => setShowImport(false)}>
+        <Modal visible={showImport} animationType="slide" transparent onRequestClose={resetImportModalState}>
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: p.base, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '70%' }}>
+            <View style={{ backgroundColor: p.base, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '78%' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <TouchableOpacity onPress={() => { setShowImport(false); setImportText(''); }}>
+                <TouchableOpacity onPress={resetImportModalState}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: NEU_DANGER }}>Cancel</Text>
                 </TouchableOpacity>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: text }}>Import JSON</Text>
@@ -644,32 +765,111 @@ const SettingsModal = ({
                   <Text style={{ fontSize: 14, fontWeight: '700', color: NEU_ACCENT }}>Import</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={{ fontSize: 12, color: sub, marginBottom: 12, lineHeight: 17 }}>
-                Paste your Stickies backup JSON below. Notes will be merged with your existing data.
-              </Text>
-              <NeuView isDark={isDark} inset radius={NEU_RADIUS.md} style={{ flex: 1 }}>
-                <TextInput
-                  style={{ flex: 1, color: text, padding: 12, fontSize: 12, fontFamily: 'monospace' }}
-                  multiline
-                  value={importText}
-                  onChangeText={setImportText}
-                  placeholder="Paste JSON here…"
-                  placeholderTextColor={sub}
-                  textAlignVertical="top"
-                  autoFocus
-                />
+
+              <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3, marginBottom: 12 }}>
+                {(['paste', 'link'] as const).map(mode => {
+                  const active = importSourceMode === mode;
+                  return (
+                    <View key={mode} style={{ flex: 1 }}>
+                      <NeuPressable
+                        isDark={isDark}
+                        radius={8}
+                        backgroundColor={active ? p.base : undefined}
+                        style={{ width: '100%', paddingVertical: 8, alignItems: 'center' }}
+                        onPress={() => setImportSourceMode(mode)}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: active ? '700' : '400', color: active ? text : sub }}>
+                          {mode === 'paste' ? 'Paste JSON' : 'From Drive link'}
+                        </Text>
+                      </NeuPressable>
+                    </View>
+                  );
+                })}
               </NeuView>
+
+              {importSourceMode === 'paste' ? (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <NeuPressable isDark={isDark} radius={9} style={{ width: '100%', paddingVertical: 9, alignItems: 'center' }} onPress={handlePasteImportText}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: text }}>Paste</Text>
+                      </NeuPressable>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <NeuPressable isDark={isDark} radius={9} style={{ width: '100%', paddingVertical: 9, alignItems: 'center' }} onPress={handleClearImportText}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: NEU_DANGER }}>Clear</Text>
+                      </NeuPressable>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 12, color: sub, marginBottom: 12, lineHeight: 17 }}>
+                    Paste your Stickies backup JSON below. Notes will be merged with your existing data.
+                  </Text>
+                  <NeuView isDark={isDark} inset radius={NEU_RADIUS.md} style={{ flex: 1 }}>
+                    <TextInput
+                      style={{ flex: 1, color: text, padding: 12, fontSize: 12, fontFamily: 'monospace' }}
+                      multiline
+                      value={importText}
+                      onChangeText={setImportText}
+                      placeholder="Paste JSON here…"
+                      placeholderTextColor={sub}
+                      textAlignVertical="top"
+                    />
+                  </NeuView>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 12, color: sub, marginBottom: 10, lineHeight: 17 }}>
+                    Paste a public Google Drive link to a .txt or .rtf file containing your backup JSON. Sharing must be set to "Anyone with the link".
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                    <NeuView isDark={isDark} inset radius={9} style={{ flex: 1 }}>
+                      <TextInput
+                        style={{ height: 40, paddingHorizontal: 12, fontSize: 12.5, color: text }}
+                        value={driveLinkInput}
+                        onChangeText={setDriveLinkInput}
+                        placeholder="Paste a Drive link…"
+                        placeholderTextColor={sub}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    </NeuView>
+                    <NeuPressable
+                      isDark={isDark}
+                      radius={9}
+                      backgroundColor={NEU_ACCENT}
+                      style={{ paddingHorizontal: 16, justifyContent: 'center', opacity: driveFetchLoading || !driveLinkInput.trim() ? 0.5 : 1 }}
+                      onPress={handleFetchDriveImport}
+                      disabled={driveFetchLoading || !driveLinkInput.trim()}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>{driveFetchLoading ? 'Fetching…' : 'Fetch'}</Text>
+                    </NeuPressable>
+                  </View>
+                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: sub, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    Preview (read-only)
+                  </Text>
+                  {/* Scrollable but never editable — a plain Text inside a
+                      ScrollView, not a TextInput, so there's no way to
+                      accidentally edit fetched content before importing it. */}
+                  <NeuView isDark={isDark} inset radius={NEU_RADIUS.md} style={{ flex: 1 }}>
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }} showsVerticalScrollIndicator={false}>
+                      <Text style={{ color: text, fontSize: 12, fontFamily: 'monospace', opacity: drivePreviewText ? 1 : 0.5 }}>
+                        {drivePreviewText || 'Fetched content will appear here once you tap Fetch.'}
+                      </Text>
+                    </ScrollView>
+                  </NeuView>
+                </>
+              )}
             </View>
           </View>
         </Modal>
 
         {/* Import StickieStyles JSON overlay — same pattern as the notes
             one above, applied to settings.stickieStyles instead. */}
-        <Modal visible={showStyleImport} animationType="slide" transparent onRequestClose={() => setShowStyleImport(false)}>
+        <Modal visible={showStyleImport} animationType="slide" transparent onRequestClose={resetStyleImportModalState}>
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: p.base, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '70%' }}>
+            <View style={{ backgroundColor: p.base, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, height: '78%' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <TouchableOpacity onPress={() => { setShowStyleImport(false); setStyleImportText(''); }}>
+                <TouchableOpacity onPress={resetStyleImportModalState}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: NEU_DANGER }}>Cancel</Text>
                 </TouchableOpacity>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: text }}>Import StickieStyles</Text>
@@ -677,21 +877,97 @@ const SettingsModal = ({
                   <Text style={{ fontSize: 14, fontWeight: '700', color: NEU_ACCENT }}>Import</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={{ fontSize: 12, color: sub, marginBottom: 12, lineHeight: 17 }}>
-                Paste a StickieStyles backup JSON below. New styles are added to your saved styles — any whose id already exists locally is skipped rather than overwritten.
-              </Text>
-              <NeuView isDark={isDark} inset radius={NEU_RADIUS.md} style={{ flex: 1 }}>
-                <TextInput
-                  style={{ flex: 1, color: text, padding: 12, fontSize: 12, fontFamily: 'monospace' }}
-                  multiline
-                  value={styleImportText}
-                  onChangeText={setStyleImportText}
-                  placeholder="Paste JSON here…"
-                  placeholderTextColor={sub}
-                  textAlignVertical="top"
-                  autoFocus
-                />
+
+              <NeuView isDark={isDark} inset radius={10} style={{ flexDirection: 'row', padding: 3, marginBottom: 12 }}>
+                {(['paste', 'link'] as const).map(mode => {
+                  const active = styleImportSourceMode === mode;
+                  return (
+                    <View key={mode} style={{ flex: 1 }}>
+                      <NeuPressable
+                        isDark={isDark}
+                        radius={8}
+                        backgroundColor={active ? p.base : undefined}
+                        style={{ width: '100%', paddingVertical: 8, alignItems: 'center' }}
+                        onPress={() => setStyleImportSourceMode(mode)}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: active ? '700' : '400', color: active ? text : sub }}>
+                          {mode === 'paste' ? 'Paste JSON' : 'From Drive link'}
+                        </Text>
+                      </NeuPressable>
+                    </View>
+                  );
+                })}
               </NeuView>
+
+              {styleImportSourceMode === 'paste' ? (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <NeuPressable isDark={isDark} radius={9} style={{ width: '100%', paddingVertical: 9, alignItems: 'center' }} onPress={handlePasteStyleImportText}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: text }}>Paste</Text>
+                      </NeuPressable>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <NeuPressable isDark={isDark} radius={9} style={{ width: '100%', paddingVertical: 9, alignItems: 'center' }} onPress={handleClearStyleImportText}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: NEU_DANGER }}>Clear</Text>
+                      </NeuPressable>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 12, color: sub, marginBottom: 12, lineHeight: 17 }}>
+                    Paste a StickieStyles backup JSON below. New styles are added to your saved styles — any whose id already exists locally is skipped rather than overwritten.
+                  </Text>
+                  <NeuView isDark={isDark} inset radius={NEU_RADIUS.md} style={{ flex: 1 }}>
+                    <TextInput
+                      style={{ flex: 1, color: text, padding: 12, fontSize: 12, fontFamily: 'monospace' }}
+                      multiline
+                      value={styleImportText}
+                      onChangeText={setStyleImportText}
+                      placeholder="Paste JSON here…"
+                      placeholderTextColor={sub}
+                      textAlignVertical="top"
+                    />
+                  </NeuView>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 12, color: sub, marginBottom: 10, lineHeight: 17 }}>
+                    Paste a public Google Drive link to a .txt or .rtf file containing your StickieStyles backup JSON. Sharing must be set to "Anyone with the link".
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                    <NeuView isDark={isDark} inset radius={9} style={{ flex: 1 }}>
+                      <TextInput
+                        style={{ height: 40, paddingHorizontal: 12, fontSize: 12.5, color: text }}
+                        value={styleDriveLinkInput}
+                        onChangeText={setStyleDriveLinkInput}
+                        placeholder="Paste a Drive link…"
+                        placeholderTextColor={sub}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    </NeuView>
+                    <NeuPressable
+                      isDark={isDark}
+                      radius={9}
+                      backgroundColor={NEU_ACCENT}
+                      style={{ paddingHorizontal: 16, justifyContent: 'center', opacity: styleDriveFetchLoading || !styleDriveLinkInput.trim() ? 0.5 : 1 }}
+                      onPress={handleFetchStyleDriveImport}
+                      disabled={styleDriveFetchLoading || !styleDriveLinkInput.trim()}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>{styleDriveFetchLoading ? 'Fetching…' : 'Fetch'}</Text>
+                    </NeuPressable>
+                  </View>
+                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: sub, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    Preview (read-only)
+                  </Text>
+                  <NeuView isDark={isDark} inset radius={NEU_RADIUS.md} style={{ flex: 1 }}>
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }} showsVerticalScrollIndicator={false}>
+                      <Text style={{ color: text, fontSize: 12, fontFamily: 'monospace', opacity: styleDrivePreviewText ? 1 : 0.5 }}>
+                        {styleDrivePreviewText || 'Fetched content will appear here once you tap Fetch.'}
+                      </Text>
+                    </ScrollView>
+                  </NeuView>
+                </>
+              )}
             </View>
           </View>
         </Modal>

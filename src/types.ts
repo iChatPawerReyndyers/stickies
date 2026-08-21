@@ -51,8 +51,18 @@ export interface AppSettings {
   // defaultFontSize above — the note's own styling bar can still override
   // it per-note afterward (see NoteModal.tsx's Display chips).
   defaultChecklistTextMode: ChecklistTextMode;
+  // Content type ('text' or 'checklist') a brand-new note starts as, same
+  // role as defaultColor/defaultFont/defaultFontSize above.
+  defaultContentType: ContentType;
   stickieStyles: StickieStyle[];
   defaultStyleId?: string;
+  // When true, a brand-new note (and a note whose "Use StickieStyle" toggle
+  // gets turned off — see NoteModal's handleUseStickieStyleToggleChange)
+  // is styled with a randomly-picked entry from stickieStyles instead of
+  // the plain defaultColor/defaultFont/etc. fields above. Falls back to
+  // the plain defaults automatically whenever stickieStyles is empty,
+  // regardless of this flag.
+  useDefaultStickieStyle: boolean;
   defaultTabId?: string;
   // Whether the "All" pill (an aggregate view across every non-trash,
   // non-archived tab) shows in the tab rail. Purely a view toggle — "All"
