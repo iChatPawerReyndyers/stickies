@@ -13,7 +13,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  PixelRatio,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { ChecklistItem, ContentType, TextStyle, NoteMargins, DEFAULT_MARGINS, ItemSpacing, DEFAULT_ITEM_SPACING, DEFAULT_LINE_SPACING, ChecklistSort, ChecklistTextMode, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN, MAX_NOTE_ROW_SPAN, StickieStyle, Tab } from '../types';
@@ -35,23 +34,14 @@ import { XIcon } from '../../assets/XIcon';
 // rebuild (pod install on iOS) since it includes native modules.
 import Clipboard from '@react-native-clipboard/clipboard';
 import RichText from '../components/RichText';
-import TextSelectionToolbar from '../components/TextSelectionToolbar';
+// Custom black selection toolbar — disabled in favor of the OS-native
+// selection bubble (see showSelectionToolbar's render site below for why).
+// Left commented rather than removed so it's a one-line revival later.
+// import TextSelectionToolbar from '../components/TextSelectionToolbar';
 import { toggleMarkerOnSelection, MarkerKind } from '../utils/richText';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-// PixelRatio.getFontScale() reflects the device's system text-size setting
-// (e.g. iOS's "Larger Text" / Android's font scale) — 1 at the default
-// size, higher when the person has bumped it up for accessibility. The
-// styling bar and compact card below were sized as fixed fractions of
-// SCREEN_HEIGHT with no regard for that setting, so at a large font scale
-// the same fixed pixel box had to fit taller text/rows than it was sized
-// for — the "styling and context card cut off" bug. Scaling these two
-// heights by (a capped) FONT_SCALE gives that extra text the room it
-// actually needs instead of clipping it. Capped at 1.4 rather than left
-// unbounded — the tallest reported font-scale settings (~1.7-2 on some
-// devices) would otherwise blow the card past a usable, on-screen size.
-const FONT_SCALE = Math.min(PixelRatio.getFontScale(), 1.4);
-const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5 * FONT_SCALE;
+const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5;
 // IDLE_WIDTH/HEIGHT — 93% of screen width, 70% of screen height — is the
 // "just looking at the note" size, matching ReadOnlyModal.tsx's own card
 // exactly so a note doesn't visually jump in size going from
@@ -64,7 +54,7 @@ const MODAL_HEIGHT = SCREEN_HEIGHT * 0.5 * FONT_SCALE;
 // (typing) or the styling bar opening (see isCompactSize below).
 const IDLE_WIDTH = SCREEN_WIDTH * 0.93;
 const IDLE_HEIGHT = SCREEN_HEIGHT * 0.7;
-const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.285 * FONT_SCALE);
+const STYLING_BAR_HEIGHT = Math.round(SCREEN_HEIGHT * 0.285);
 const MODAL_WIDTH = 320;
 const CARD_HORIZONTAL_PADDING = 24;
 const CHECKBOX_SIZE = 26;
@@ -278,11 +268,6 @@ type NoteModalProps = {
   // tabs/selectedTabId/onTabIdChange above — for viewOnly/styleEditorMode
   // callers, which never render the button in the first place.
   onSaveAsStickieStyle?: (style: StickieStyle) => void;
-  // What to fall back to when the "Use StickieStyle" toggle turns off —
-  // the caller's plain default color/font/etc. fields, same shape as this
-  // file's own StyleFieldsSnapshot. Optional so styleEditorMode/viewOnly
-  // callers, which never render the toggle, can omit it.
-  defaultStyleFields?: StyleFieldsSnapshot;
 };
 
 // ── Snapshot type ──────────────────────────────────────────────────────────────
@@ -381,7 +366,6 @@ const NoteModal = ({
   selectedTabId,
   onTabIdChange,
   onSaveAsStickieStyle,
-  defaultStyleFields,
 }: NoteModalProps) => {
   const [showStyling, setShowStyling] = useState(false);
   const [showStyleDropdown, setShowStyleDropdown] = useState(false);
@@ -951,21 +935,17 @@ const NoteModal = ({
     if (forcedSelectionRange) setForcedSelectionRange(undefined);
   };
 
-  // Selection state is no longer cleared from any individual TextInput's
-  // onBlur — a text-selection drag can itself cause transient blur/refocus
-  // blips on some platforms, and clearing there was wiping the highlight
-  // and handles the instant the finger lifted (see the file's toolbar
-  // mounting fix above for the other half of this same bug). Instead,
-  // selection is only ever reassigned when a *different* field's
-  // onSelectionChange actually claims it (see onSelectionChangeFor), or
-  // reset here when the keyboard fully closes — a real "I'm done editing"
-  // signal that isn't sensitive to a selection gesture's own timing.
-  useEffect(() => {
-    if (!isKeyboardVisible) {
-      setActiveSelectionTarget(null);
+  const onBlurClearSelectionFor = (target: SelectionTarget) => () => {
+    setActiveSelectionTarget(prev => {
+      const sameTarget =
+        prev &&
+        prev.kind === target.kind &&
+        (prev.kind !== 'checklist' || (target.kind === 'checklist' && prev.itemId === target.itemId));
+      if (!sameTarget) return prev;
       setSelectionRange({ start: 0, end: 0 });
-    }
-  }, [isKeyboardVisible]);
+      return null;
+    });
+  };
 
   const handleToolbarMarker = (kind: MarkerKind) => {
     const text = getActiveSelectionText();
@@ -1256,18 +1236,9 @@ const NoteModal = ({
     if (value) {
       setPreStickieStyleFields(captureStyleFields());
     } else {
-      // Always the plain Settings default here — random-pick is reserved
-      // for brand-new note creation (see MainScreen.createNewNote). Turning
-      // an existing note's toggle off is a deliberate "go back to the
-      // default look" action, not "give me another random one".
-      if (defaultStyleFields) {
-        restoreStyleFields(defaultStyleFields);
-        setAppliedStickieStyleSnapshot(null);
-      } else if (preStickieStyleFields) {
-        restoreStyleFields(preStickieStyleFields);
-        setAppliedStickieStyleSnapshot(null);
-      }
+      if (preStickieStyleFields) restoreStyleFields(preStickieStyleFields);
       setPreStickieStyleFields(null);
+      setAppliedStickieStyleSnapshot(null);
     }
     setUseStickieStyleToggle(value);
   };
@@ -1546,27 +1517,23 @@ const NoteModal = ({
                 SwipeToAction wrapper around the whole modal below), so
                 swiping works anywhere on screen, not just over this area. */}
             <View style={{ flex: 1, position: 'relative' }} pointerEvents={showStyling ? 'none' : 'auto'}>
-                {/* Always mounted (never conditionally inserted/removed from the
-                    tree) — visibility is purely a style toggle. Selection can
-                    still be actively growing (via a dragged handle) at the
-                    exact moment showSelectionToolbar flips true; mounting a
-                    new sibling view into the layout in the middle of that
-                    native gesture was corrupting the OS's touch tracking,
-                    which is what made the selection/handles collapse the
-                    instant the finger lifted. Same "don't mutate the tree
-                    mid-gesture" lesson JiggleWrapper.tsx already documents
-                    for its own crash fix. */}
-                <View
-                  pointerEvents={showSelectionToolbar ? 'box-none' : 'none'}
-                  style={{ opacity: showSelectionToolbar ? 1 : 0 }}
-                >
+                {/* Custom black toolbar disabled — the OS-native selection
+                    bubble (Cut/Copy/Paste/Replace, with real drag handles)
+                    now shows on its own once contextMenuHidden is removed
+                    from the TextInputs below. showSelectionToolbar/
+                    handleToolbarMarker/handleToolbarCopy/handleToolbarPaste/
+                    handleToolbarSelectAll are all still defined above and
+                    ready to wire back in — just uncomment this block and
+                    the TextSelectionToolbar import above to revive it.
+                {showSelectionToolbar && (
                   <TextSelectionToolbar
                     onMarker={handleToolbarMarker}
                     onCopy={handleToolbarCopy}
                     onPaste={handleToolbarPaste}
                     onSelectAll={handleToolbarSelectAll}
                   />
-                </View>
+                )}
+                */}
                 {contentType === 'checklist' ? (
                 <ScrollView
                   ref={scrollRef}
@@ -1623,23 +1590,13 @@ const NoteModal = ({
                             blurOnSubmit={false}
                             onSubmitEditing={() => addItemAfter(item.id)}
                             underlineColorAndroid="transparent"
-                            // contextMenuHidden intentionally removed — on Android it
-                            // blocks the native ActionMode from starting at all, and
-                            // that ActionMode is what keeps a selection persisted (with
-                            // its handles/highlight) after the finger lifts. Without it,
-                            // the drag itself still visually showed a selection, but
-                            // nothing was left to hold it open on release — matching the
-                            // exact "gone the instant I lift my finger" symptom. The
-                            // custom TextSelectionToolbar and Android's own native
-                            // copy/paste bubble can both appear now; see the file header
-                            // comment on TextSelectionToolbar.tsx for the follow-up if
-                            // that overlap needs addressing.
-                            {...(activeSelectionTarget?.kind === 'checklist' &&
-                              activeSelectionTarget.itemId === item.id &&
-                              forcedSelectionRange
-                                ? { selection: forcedSelectionRange }
-                                : {})}
+                            selection={
+                              activeSelectionTarget?.kind === 'checklist' && activeSelectionTarget.itemId === item.id
+                                ? forcedSelectionRange
+                                : undefined
+                            }
                             onSelectionChange={onSelectionChangeFor({ kind: 'checklist', itemId: item.id })}
+                            onBlur={onBlurClearSelectionFor({ kind: 'checklist', itemId: item.id })}
                           />
                         </View>
                       );
@@ -1710,6 +1667,7 @@ const NoteModal = ({
                             onBlur={() => {
                               setEditingItemId(prev => (prev === item.id ? null : prev));
                               if (editingSnapshotRef.current?.id === item.id) editingSnapshotRef.current = null;
+                              onBlurClearSelectionFor({ kind: 'checklist', itemId: item.id })();
                             }}
                             onSubmitEditing={() => addItemAfter(item.id)}
                             onKeyPress={({ nativeEvent }) => {
@@ -1735,22 +1693,11 @@ const NoteModal = ({
                               }
                             }}
                             underlineColorAndroid="transparent"
-                            // contextMenuHidden intentionally removed — on Android it
-                            // blocks the native ActionMode from starting at all, and
-                            // that ActionMode is what keeps a selection persisted (with
-                            // its handles/highlight) after the finger lifts. Without it,
-                            // the drag itself still visually showed a selection, but
-                            // nothing was left to hold it open on release — matching the
-                            // exact "gone the instant I lift my finger" symptom. The
-                            // custom TextSelectionToolbar and Android's own native
-                            // copy/paste bubble can both appear now; see the file header
-                            // comment on TextSelectionToolbar.tsx for the follow-up if
-                            // that overlap needs addressing.
-                            {...(activeSelectionTarget?.kind === 'checklist' &&
-                              activeSelectionTarget.itemId === item.id &&
-                              forcedSelectionRange
-                                ? { selection: forcedSelectionRange }
-                                : {})}
+                            selection={
+                              activeSelectionTarget?.kind === 'checklist' && activeSelectionTarget.itemId === item.id
+                                ? forcedSelectionRange
+                                : undefined
+                            }
                             onSelectionChange={onSelectionChangeFor({ kind: 'checklist', itemId: item.id })}
                           />
                         </View>
@@ -1777,10 +1724,9 @@ const NoteModal = ({
                       textAlignVertical="top"
                       autoFocus={!isReadOnlyContent}
                       underlineColorAndroid="transparent"
-                      // contextMenuHidden intentionally removed — see the comment on
-                      // the checklist TextInputs above for why.
-                      {...(activeSelectionTarget?.kind === 'text' && forcedSelectionRange ? { selection: forcedSelectionRange } : {})}
+                      selection={activeSelectionTarget?.kind === 'text' ? forcedSelectionRange : undefined}
                       onSelectionChange={onSelectionChangeFor({ kind: 'text' })}
+                      onBlur={onBlurClearSelectionFor({ kind: 'text' })}
                     />
                   ) : (
                     <ScrollView
@@ -2213,7 +2159,7 @@ const NoteModal = ({
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.max(6, selectedFontSize - 2))} hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}>
                     <Text style={barStyles.stepBtnText}>−</Text>
                   </TouchableOpacity>
-                  <Text style={[barStyles.stepVal, { color: p.textPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{selectedFontSize}</Text>
+                  <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedFontSize}</Text>
                   <TouchableOpacity style={barStyles.stepBtn} onPress={() => onFontSizeChange(Math.min(36, selectedFontSize + 2))} hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}>
                     <Text style={barStyles.stepBtnText}>+</Text>
                   </TouchableOpacity>
@@ -2263,7 +2209,7 @@ const NoteModal = ({
                   const step = side === 'top' || side === 'bottom' ? 2 : 4;
                   return (
                   <View key={side} style={[barStyles.marginRow, { marginBottom: 3 }]}>
-                    <Text style={[barStyles.marginLabel, { color: p.textPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{side.charAt(0).toUpperCase() + side.slice(1)}</Text>
+                    <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>{side.charAt(0).toUpperCase() + side.slice(1)}</Text>
                     <NeuView isDark={isDark} inset radius={9} style={[barStyles.stepper, { marginTop: 3 }]}>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
@@ -2272,7 +2218,7 @@ const NoteModal = ({
                       >
                         <Text style={barStyles.stepBtnText}>−</Text>
                       </TouchableOpacity>
-                      <Text style={[barStyles.stepVal, { color: p.textPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{selectedMargins[side]}</Text>
+                      <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedMargins[side]}</Text>
                       <TouchableOpacity
                         style={barStyles.stepBtn}
                         onPress={() => onMarginsChange({ ...selectedMargins, [side]: Math.min(100, selectedMargins[side] + step) })}
@@ -2297,7 +2243,7 @@ const NoteModal = ({
                     { key: 'bottom', label: 'Below' },
                   ] as { key: keyof ItemSpacing; label: string }[]).map(({ key, label }) => (
                     <View key={key} style={barStyles.marginRow}>
-                      <Text style={[barStyles.marginLabel, { color: p.textPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{label}</Text>
+                      <Text style={[barStyles.marginLabel, { color: p.textPrimary }]}>{label}</Text>
                       <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
@@ -2306,7 +2252,7 @@ const NoteModal = ({
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
-                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{selectedItemSpacing[key]}</Text>
+                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedItemSpacing[key]}</Text>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onItemSpacingChange({ ...selectedItemSpacing, [key]: Math.min(48, selectedItemSpacing[key] + 2) })}
@@ -2326,7 +2272,7 @@ const NoteModal = ({
                     >
                       <Text style={barStyles.stepBtnText}>−</Text>
                     </TouchableOpacity>
-                    <Text style={[barStyles.stepVal, { color: p.textPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{selectedLineSpacing}</Text>
+                    <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedLineSpacing}</Text>
                     <TouchableOpacity
                       style={barStyles.stepBtn}
                       onPress={() => onLineSpacingChange(Math.min(30, selectedLineSpacing + 2))}
@@ -2422,7 +2368,7 @@ const NoteModal = ({
                   <View style={[barStyles.section, { width: 170 }]}>
                     <Text style={[barStyles.sLabel, { color: p.textSecondary }]}>Grid Size</Text>
                     <View style={barStyles.marginRow}>
-                      <Text style={[barStyles.marginLabel, { color: p.textPrimary, width: 62 }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>Columns</Text>
+                      <Text style={[barStyles.marginLabel, { color: p.textPrimary, width: 62 }]} numberOfLines={1}>Columns</Text>
                       <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
@@ -2431,7 +2377,7 @@ const NoteModal = ({
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
-                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{selectedColSpan}</Text>
+                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedColSpan}</Text>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onColSpanChange(Math.min(maxColSpan, selectedColSpan + 1))}
@@ -2442,7 +2388,7 @@ const NoteModal = ({
                       </NeuView>
                     </View>
                     <View style={barStyles.marginRow}>
-                      <Text style={[barStyles.marginLabel, { color: p.textPrimary, width: 62 }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>Rows</Text>
+                      <Text style={[barStyles.marginLabel, { color: p.textPrimary, width: 62 }]} numberOfLines={1}>Rows</Text>
                       <NeuView isDark={isDark} inset radius={9} style={barStyles.stepper}>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
@@ -2451,7 +2397,7 @@ const NoteModal = ({
                         >
                           <Text style={barStyles.stepBtnText}>−</Text>
                         </TouchableOpacity>
-                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{selectedRowSpan}</Text>
+                        <Text style={[barStyles.stepVal, { color: p.textPrimary }]}>{selectedRowSpan}</Text>
                         <TouchableOpacity
                           style={barStyles.stepBtn}
                           onPress={() => onRowSpanChange(Math.min(MAX_NOTE_ROW_SPAN, selectedRowSpan + 1))}
